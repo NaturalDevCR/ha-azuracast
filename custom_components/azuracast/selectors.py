@@ -17,7 +17,9 @@ from .api.client import AzuraCastClient
 from .api.models import Playlist
 from .schedule import playlist_playable_now
 
-TAG_PATTERN = re.compile(r"(?<!\S)ha:([a-z0-9_]+)=([a-z0-9_-]+)(?!\S)", re.IGNORECASE)
+# re.ASCII keeps IGNORECASE from matching non-ASCII letters that fold onto a-z
+# (the long s, the Kelvin sign, the dotted capital I).
+TAG_PATTERN = re.compile(r"(?<!\S)ha:([a-z0-9_]+)=([a-z0-9_-]+)(?!\S)", re.IGNORECASE | re.ASCII)
 REASON_NONE_ENABLED = "none_enabled"
 REASON_MIXED = "mixed"
 

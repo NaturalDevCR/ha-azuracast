@@ -127,6 +127,27 @@ async def test_clear_queue_deletes_each_item(
     assert deletes == [f"{API}/station/1/queue/501", f"{API}/station/1/queue/502"]
 
 
+async def test_clear_queue_skips_items_already_gone(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """An item played or consumed between listing and deleting answers 404."""
+    aioclient_mock.get(f"{API}/station/1/queue", json=load_fixture("queue_1.json"))
+    aioclient_mock.delete(f"{API}/station/1/queue/501", status=404, json={"message": "gone"})
+    aioclient_mock.delete(f"{API}/station/1/queue/502", json={"success": True})
+    assert await _client(hass).clear_queue(1) == 1
+    deletes = [str(c[1]) for c in aioclient_mock.mock_calls if c[0] == "DELETE"]
+    assert deletes == [f"{API}/station/1/queue/501", f"{API}/station/1/queue/502"]
+
+
+async def test_clear_queue_other_errors_propagate(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    aioclient_mock.get(f"{API}/station/1/queue", json=load_fixture("queue_1.json"))
+    aioclient_mock.delete(f"{API}/station/1/queue/501", status=500, json={"message": "boom"})
+    with pytest.raises(AzuraCastResponseError):
+        await _client(hass).clear_queue(1)
+
+
 @pytest.mark.parametrize(
     ("status", "error"),
     [

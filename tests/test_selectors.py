@@ -40,6 +40,11 @@ CR = ZoneInfo("America/Costa_Rica")
         ("ha:ambiente=chill,", {}),
         ("ha:ambiente=", {}),
         ("line1\nha:genre=jazz-latino\tmore", {"genre": {"jazz-latino"}}),
+        # Non-ASCII letters that case-fold onto a-z must not count as tag characters.
+        ("ha:\u017f=x", {}),  # LATIN SMALL LETTER LONG S folds to "s"
+        ("ha:\u212a=x", {}),  # KELVIN SIGN folds to "k"
+        ("ha:\u0130=x", {}),  # LATIN CAPITAL LETTER I WITH DOT ABOVE folds to "i"
+        ("ha:ambiente=\u017f", {}),
     ],
 )
 def test_parse_tags(description: str | None, expected: dict[str, set[str]]) -> None:
