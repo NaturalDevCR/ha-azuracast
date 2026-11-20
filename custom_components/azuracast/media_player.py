@@ -16,7 +16,7 @@ from homeassistant.util import dt as dt_util
 
 from .api.models import NowPlaying
 from .coordinator import NowPlayingCoordinator
-from .entity import AzuraCastEntity, api_errors
+from .entity import AzuraCastNowPlayingEntity, api_errors
 from .runtime import AzuraCastConfigEntry, StationRuntime
 
 PARALLEL_UPDATES = 1
@@ -33,12 +33,13 @@ async def async_setup_entry(
     )
 
 
-class AzuraCastMediaPlayer(AzuraCastEntity[NowPlayingCoordinator], MediaPlayerEntity):
+class AzuraCastMediaPlayer(AzuraCastNowPlayingEntity, MediaPlayerEntity):
     """What a station is playing."""
 
     _attr_name = None
     _attr_media_content_type = MediaType.MUSIC
-    _attr_media_image_remotely_accessible = True
+    # Proxy artwork through HA: instances are often LAN-only or self-signed.
+    _attr_media_image_remotely_accessible = False
 
     def __init__(
         self,
@@ -53,10 +54,6 @@ class AzuraCastMediaPlayer(AzuraCastEntity[NowPlayingCoordinator], MediaPlayerEn
             else MediaPlayerEntityFeature(0)
         )
         self._attr_media_position_updated_at: datetime | None = dt_util.utcnow()
-
-    @property
-    def available(self) -> bool:
-        return super().available and self.coordinator.data is not None
 
     @property
     def _np(self) -> NowPlaying | None:

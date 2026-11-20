@@ -17,11 +17,16 @@ from homeassistant.helpers.typing import StateType
 
 from .api.models import NowPlaying, Song
 from .coordinator import NowPlayingCoordinator, tags_for_playlist
-from .entity import AzuraCastEntity
+from .entity import AzuraCastNowPlayingEntity
 from .runtime import AzuraCastConfigEntry, StationRuntime
 
 PARALLEL_UPDATES = 0
 MAX_STATE = 255
+
+
+def _truncate(value: str | None) -> str | None:
+    """Fit a string into a state."""
+    return value[:MAX_STATE] if value is not None else None
 
 
 def _song_attrs(song: Song) -> dict[str, Any]:
@@ -47,7 +52,7 @@ SENSORS: tuple[AzuraCastSensorDescription, ...] = (
     AzuraCastSensorDescription(
         key="current_song",
         translation_key="current_song",
-        value_fn=lambda np: np.current.song.text[:MAX_STATE] if np.current else None,
+        value_fn=lambda np: _truncate(np.current.song.text) if np.current else None,
         attrs_fn=lambda np, rt: (
             {
                 **_song_attrs(np.current.song),
@@ -61,15 +66,17 @@ SENSORS: tuple[AzuraCastSensorDescription, ...] = (
     AzuraCastSensorDescription(
         key="current_playlist",
         translation_key="current_playlist",
-        value_fn=lambda np: np.current.playlist if np.current else None,
-        attrs_fn=lambda np, rt: {
-            "tags": tags_for_playlist(rt.manage, np.current.playlist if np.current else None)
-        },
+        value_fn=lambda np: _truncate(np.current.playlist) if np.current else None,
+        attrs_fn=lambda np, rt: (
+            {"tags": tags_for_playlist(rt.manage, np.current.playlist if np.current else None)}
+            if rt.manage is not None
+            else None
+        ),
     ),
     AzuraCastSensorDescription(
         key="next_song",
         translation_key="next_song",
-        value_fn=lambda np: np.upcoming.song.text[:MAX_STATE] if np.upcoming else None,
+        value_fn=lambda np: _truncate(np.upcoming.song.text) if np.upcoming else None,
         attrs_fn=lambda np, rt: (
             {**_song_attrs(np.upcoming.song), "playlist": np.upcoming.playlist}
             if np.upcoming
@@ -79,7 +86,7 @@ SENSORS: tuple[AzuraCastSensorDescription, ...] = (
     AzuraCastSensorDescription(
         key="live_streamer",
         translation_key="live_streamer",
-        value_fn=lambda np: np.streamer_name if np.is_live else None,
+        value_fn=lambda np: _truncate(np.streamer_name) if np.is_live else None,
     ),
 )
 
@@ -96,7 +103,7 @@ async def async_setup_entry(
     )
 
 
-class AzuraCastSensor(AzuraCastEntity[NowPlayingCoordinator], SensorEntity):
+class AzuraCastSensor(AzuraCastNowPlayingEntity, SensorEntity):
     """A now-playing sensor."""
 
     entity_description: AzuraCastSensorDescription
@@ -110,10 +117,6 @@ class AzuraCastSensor(AzuraCastEntity[NowPlayingCoordinator], SensorEntity):
     ) -> None:
         super().__init__(coordinator, entry, runtime, description.key)
         self.entity_description = description
-
-    @property
-    def available(self) -> bool:
-        return super().available and self.coordinator.data is not None
 
     @property
     def native_value(self) -> StateType:

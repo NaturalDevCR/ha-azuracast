@@ -15,7 +15,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .api.models import NowPlaying
 from .coordinator import NowPlayingCoordinator
-from .entity import AzuraCastEntity
+from .entity import AzuraCastNowPlayingEntity
 from .runtime import AzuraCastConfigEntry, StationRuntime
 
 PARALLEL_UPDATES = 0
@@ -55,7 +55,7 @@ async def async_setup_entry(
     )
 
 
-class AzuraCastBinarySensor(AzuraCastEntity[NowPlayingCoordinator], BinarySensorEntity):
+class AzuraCastBinarySensor(AzuraCastNowPlayingEntity, BinarySensorEntity):
     """A now-playing binary sensor."""
 
     entity_description: AzuraCastBinarySensorDescription
@@ -69,10 +69,6 @@ class AzuraCastBinarySensor(AzuraCastEntity[NowPlayingCoordinator], BinarySensor
     ) -> None:
         super().__init__(coordinator, entry, runtime, description.key)
         self.entity_description = description
-
-    @property
-    def available(self) -> bool:
-        return super().available and self.coordinator.data is not None
 
     @property
     def is_on(self) -> bool | None:

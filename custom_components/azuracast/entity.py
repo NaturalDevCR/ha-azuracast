@@ -18,7 +18,7 @@ from .api.client import AzuraCastClient
 from .api.errors import AzuraCastError
 from .api.models import Station
 from .const import DOMAIN
-from .coordinator import ManageCoordinator, ManageData
+from .coordinator import ManageCoordinator, ManageData, NowPlayingCoordinator
 from .runtime import AzuraCastConfigEntry, StationRuntime
 
 
@@ -77,37 +77,55 @@ class AzuraCastEntity[CoordinatorT: DataUpdateCoordinator[Any]](CoordinatorEntit
         return self._runtime.station
 
 
+class AzuraCastNowPlayingEntity(AzuraCastEntity[NowPlayingCoordinator]):
+    """A station entity fed by the now-playing coordinator."""
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.coordinator.data is not None
+
+
 def track_dynamic_entities[K: Hashable](
     hass: HomeAssistant,
     entry: AzuraCastConfigEntry,
     coordinator: ManageCoordinator,
     *,
     platform: str,
+    unique_id_prefix: str,
     keys: Callable[[ManageData], set[K]],
     create: Callable[[K], AzuraCastEntity[ManageCoordinator]],
     add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Add entities for new keys and drop registry entries of vanished keys.
+    """Add entities for new keys and drop registry entries of keys that are gone.
 
-    Every entity returned by ``create(key)`` must set ``self.dynamic_key = key``.
+    The entity made by ``create(key)`` must have the unique id
+    ``f"{unique_id_prefix}{key}"``. Every sync removes this entry's ``platform``
+    registry entries under the prefix that match no current key, which also
+    clears orphans left from before setup (removed while HA was down or between
+    reloads).
     """
-    known: dict[K, str] = {}
+    # The prefix must end with a separator, so "E_1_playlist_" never matches "E_11_...".
+    known: set[K] = set()
 
     @callback
     def _sync() -> None:
         if coordinator.data is None:
             return
         current = keys(coordinator.data)
-        new_entities = [create(key) for key in current - known.keys()]
-        for entity in new_entities:
-            known[entity.dynamic_key] = str(entity.unique_id)  # type: ignore[attr-defined]
-        if new_entities:
-            add_entities(new_entities)
+        wanted = {f"{unique_id_prefix}{key}" for key in current}
         registry = er.async_get(hass)
-        for key in known.keys() - current:
-            unique_id = known.pop(key)
-            if entity_id := registry.async_get_entity_id(platform, DOMAIN, unique_id):
-                registry.async_remove(entity_id)
+        for reg_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
+            if (
+                reg_entry.domain == platform
+                and reg_entry.platform == DOMAIN
+                and reg_entry.unique_id.startswith(unique_id_prefix)
+                and reg_entry.unique_id not in wanted
+            ):
+                registry.async_remove(reg_entry.entity_id)
+        known.intersection_update(current)
+        if new_keys := current - known:
+            known.update(new_keys)
+            add_entities([create(key) for key in new_keys])
 
     _sync()
     entry.async_on_unload(coordinator.async_add_listener(_sync))
