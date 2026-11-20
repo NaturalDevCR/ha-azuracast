@@ -21,6 +21,9 @@ from .const import LOGGER, POLL_FALLBACK_INTERVAL, SSE_MAX_BACKOFF
 from .coordinator import NowPlayingCoordinator
 from .issues import set_sse_unavailable
 
+SSE_INITIAL_BACKOFF = 1.0
+"""First reconnect delay in seconds; read at runtime so tests can shrink it."""
+
 type StreamFactory = Callable[[aiohttp.ClientSession, str, list[str]], AsyncIterator[NowPlaying]]
 
 
@@ -46,10 +49,14 @@ class NowPlayingHub:
         self._task: asyncio.Task[None] | None = None
         self._unsub_poll: CALLBACK_TYPE | None = None
         self._poll_failing = False
+        self._stopped = False
+        self._backoff = SSE_INITIAL_BACKOFF
+        self._unexpected_logged = False
         self.sse_connected = False
         self.sse_ever_connected = False
 
     async def async_start(self) -> None:
+        self._stopped = False
         await self.async_poll()
         self._unsub_poll = async_track_time_interval(
             self._hass,
@@ -63,6 +70,7 @@ class NowPlayingHub:
             )
 
     async def async_stop(self) -> None:
+        self._stopped = True
         if self._unsub_poll is not None:
             self._unsub_poll()
             self._unsub_poll = None
@@ -77,17 +85,39 @@ class NowPlayingHub:
         try:
             items = await self._client.get_nowplaying()
         except AzuraCastError as err:
-            if not self._poll_failing:
-                LOGGER.info("AzuraCast now-playing data unavailable: %s", err)
-                self._poll_failing = True
-            for coordinator in self._coordinators.values():
-                coordinator.async_set_update_error(err)
+            self._poll_failed(err)
             return
+        except Exception as err:  # a bad payload must not escape a start or a tick
+            self._poll_failed(err, unexpected=True)
+            return
+        if self._poll_superseded():
+            return
+        self._mark_available()
+        for nowplaying in items:
+            self._dispatch(nowplaying)
+
+    def _poll_superseded(self) -> bool:
+        """True when a poll result is stale: the hub stopped or SSE took over."""
+        return self._stopped or self.sse_connected
+
+    @callback
+    def _poll_failed(self, err: Exception, *, unexpected: bool = False) -> None:
+        if self._poll_superseded():
+            return
+        if not self._poll_failing:
+            self._poll_failing = True
+            if unexpected:
+                LOGGER.exception("AzuraCast now-playing data unavailable: %s", err)
+            else:
+                LOGGER.info("AzuraCast now-playing data unavailable: %s", err)
+        for coordinator in self._coordinators.values():
+            coordinator.async_set_update_error(err)
+
+    @callback
+    def _mark_available(self) -> None:
         if self._poll_failing:
             LOGGER.info("AzuraCast now-playing data available again")
             self._poll_failing = False
-        for nowplaying in items:
-            self._dispatch(nowplaying)
 
     async def _async_poll_tick(self, _now: datetime) -> None:
         if not self.sse_connected:
@@ -100,38 +130,55 @@ class NowPlayingHub:
             coordinator.push(nowplaying)
 
     async def _async_run(self) -> None:
-        backoff = 1.0
         shortcodes = list(self._coordinators)
-        unexpected_logged = False
+        self._backoff = SSE_INITIAL_BACKOFF
+        self._unexpected_logged = False
         while True:
             try:
-                async for nowplaying in self._stream_factory(
-                    self._client.session, self._client.base_url, shortcodes
-                ):
-                    if not self.sse_connected:
-                        self.sse_connected = True
-                        self.sse_ever_connected = True
-                        backoff = 1.0
-                        unexpected_logged = False
-                        set_sse_unavailable(self._hass, self._entry, False)
-                        LOGGER.debug("Now-playing stream connected")
-                    self._dispatch(nowplaying)
+                await self._async_consume_stream(shortcodes)
             except AzuraCastError as err:
                 LOGGER.debug("Now-playing stream unavailable: %s", err)
-                if not self.sse_ever_connected:
-                    set_sse_unavailable(self._hass, self._entry, True)
+                self._stream_failed()
             except Exception:
                 # Defense in depth: the reconnect loop must survive anything but
                 # cancellation (CancelledError is a BaseException, so it passes).
-                if not unexpected_logged:
-                    LOGGER.exception("Unexpected error in the AzuraCast now-playing stream")
-                    unexpected_logged = True
-                else:
-                    LOGGER.debug(
-                        "Unexpected error in the AzuraCast now-playing stream", exc_info=True
-                    )
-                if not self.sse_ever_connected:
-                    set_sse_unavailable(self._hass, self._entry, True)
+                self._log_unexpected_stream_error()
+                self._stream_failed()
             self.sse_connected = False
-            await asyncio.sleep(backoff + random.uniform(0, backoff / 2))
-            backoff = min(backoff * 2, SSE_MAX_BACKOFF)
+            await asyncio.sleep(self._next_backoff_delay())
+
+    async def _async_consume_stream(self, shortcodes: list[str]) -> None:
+        async for nowplaying in self._stream_factory(
+            self._client.session, self._client.base_url, shortcodes
+        ):
+            if not self.sse_connected:
+                self._on_stream_connected()
+            self._dispatch(nowplaying)
+
+    @callback
+    def _on_stream_connected(self) -> None:
+        self.sse_connected = True
+        self.sse_ever_connected = True
+        self._backoff = SSE_INITIAL_BACKOFF
+        self._unexpected_logged = False
+        set_sse_unavailable(self._hass, self._entry, False)
+        LOGGER.debug("Now-playing stream connected")
+        self._mark_available()
+
+    @callback
+    def _stream_failed(self) -> None:
+        if not self.sse_ever_connected:
+            set_sse_unavailable(self._hass, self._entry, True)
+
+    def _log_unexpected_stream_error(self) -> None:
+        if self._unexpected_logged:
+            LOGGER.debug("Unexpected error in the AzuraCast now-playing stream", exc_info=True)
+            return
+        LOGGER.exception("Unexpected error in the AzuraCast now-playing stream")
+        self._unexpected_logged = True
+
+    def _next_backoff_delay(self) -> float:
+        """Return the next reconnect delay (jitter included, capped) and grow the base."""
+        delay = min(self._backoff + random.uniform(0, self._backoff / 2), SSE_MAX_BACKOFF)
+        self._backoff = min(self._backoff * 2, SSE_MAX_BACKOFF)
+        return delay
