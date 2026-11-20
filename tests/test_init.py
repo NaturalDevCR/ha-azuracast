@@ -26,6 +26,7 @@ from custom_components.azuracast.const import (
     CONF_KEEP_QUEUE_STATIONS,
     DOMAIN,
 )
+from custom_components.azuracast.issues import async_delete_stale_station_issues
 
 
 async def test_setup_and_unload(hass: HomeAssistant, init_integration: MockConfigEntry) -> None:
@@ -250,6 +251,54 @@ async def test_station_issues_cleared_without_api_key(
         assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
     assert await hass.config_entries.async_unload(mock_config_entry.entry_id)
     await hass.async_block_till_done()
+
+
+async def test_issues_of_vanished_stations_removed_at_setup(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: MagicMock,
+    issue_registry: ir.IssueRegistry,
+) -> None:
+    """Issues of a station deleted in AzuraCast (or while HA was down) do not linger."""
+    mock_config_entry.add_to_hass(hass)
+    entry_id = mock_config_entry.entry_id
+    stale = [*_seed_station_issues(hass, entry_id, 99), *_seed_station_issues(hass, entry_id, 12)]
+    other = _seed_station_issues(hass, "otherentry", 99)
+    assert await hass.config_entries.async_setup(entry_id)
+    await hass.async_block_till_done()
+    for issue_id in stale:
+        assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
+    for issue_id in other:
+        assert issue_registry.async_get_issue(DOMAIN, issue_id) is not None
+    assert await hass.config_entries.async_unload(entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_delete_stale_station_issues_matches_full_ids(
+    hass: HomeAssistant, issue_registry: ir.IssueRegistry
+) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, entry_id="E")
+    kept = [
+        *_seed_station_issues(hass, "E", 1),
+        # Another entry whose id starts with "E_5", and one whose id merely starts with "E".
+        *_seed_station_issues(hass, "E_5", 1),
+        *_seed_station_issues(hass, "E2", 12),
+        "sse_unavailable_E",
+    ]
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        "sse_unavailable_E",
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key="sse_unavailable",
+    )
+    gone = [*_seed_station_issues(hass, "E", 12), *_seed_station_issues(hass, "E", 11)]
+    async_delete_stale_station_issues(hass, entry, {1})
+    for issue_id in kept:
+        assert issue_registry.async_get_issue(DOMAIN, issue_id) is not None, issue_id
+    for issue_id in gone:
+        assert issue_registry.async_get_issue(DOMAIN, issue_id) is None, issue_id
 
 
 async def test_remove_entry_deletes_its_issues(

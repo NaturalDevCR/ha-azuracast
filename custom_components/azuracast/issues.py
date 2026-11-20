@@ -83,3 +83,32 @@ def async_delete_entry_issues(hass: HomeAssistant, entry: ConfigEntry) -> None:
     ]
     for issue_id in issue_ids:
         ir.async_delete_issue(hass, DOMAIN, issue_id)
+
+
+STATION_ISSUE_PREFIXES = ("missing_permissions", "conflicting_tags")
+
+
+@callback
+def async_delete_stale_station_issues(
+    hass: HomeAssistant, entry: ConfigEntry, station_ids: set[int]
+) -> None:
+    """Delete this entry's per-station issues of stations that no longer exist.
+
+    Only ids of the exact form ``{prefix}_{entry_id}_{station_id}`` count, so
+    another entry's issues and a station id that merely starts with a kept one
+    (12 vs 1) are told apart.
+    """
+    keep = {str(station_id) for station_id in station_ids}
+    heads = [f"{prefix}_{entry.entry_id}_" for prefix in STATION_ISSUE_PREFIXES]
+    stale = [
+        issue_id
+        for domain, issue_id in ir.async_get(hass).issues
+        if domain == DOMAIN
+        for head in heads
+        if issue_id.startswith(head)
+        and (station := issue_id.removeprefix(head)).isascii()
+        and station.isdigit()
+        and station not in keep
+    ]
+    for issue_id in stale:
+        ir.async_delete_issue(hass, DOMAIN, issue_id)

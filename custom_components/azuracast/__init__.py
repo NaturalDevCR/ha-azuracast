@@ -32,7 +32,12 @@ from .const import (
 )
 from .coordinator import ManageCoordinator, NowPlayingCoordinator, tags_for_playlist
 from .hub import NowPlayingHub
-from .issues import async_delete_entry_issues, set_conflicting_tags, set_missing_permissions
+from .issues import (
+    async_delete_entry_issues,
+    async_delete_stale_station_issues,
+    set_conflicting_tags,
+    set_missing_permissions,
+)
 from .runtime import AzuraCastConfigEntry, AzuraCastRuntime, StationRuntime, station_device_key
 from .services import async_setup_services
 
@@ -111,6 +116,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: AzuraCastConfigEntry) ->
         )
 
     _remove_stale_devices(device_registry, entry, runtimes)
+    async_delete_stale_station_issues(hass, entry, {station.id for station in stations})
 
     hub = NowPlayingHub(
         hass, entry, client, {rt.station.shortcode: rt.nowplaying for rt in runtimes.values()}
