@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.azuracast.const import DOMAIN
@@ -42,7 +43,16 @@ def _register(
     return registry.async_get_or_create(domain, DOMAIN, unique_id, config_entry=entry).entity_id
 
 
-def _track(hass: HomeAssistant, entry: MockConfigEntry, coordinator: FakeCoordinator) -> MagicMock:
+def _entity(key: str) -> MagicMock:
+    return MagicMock(key=key, unique_id=f"{PREFIX}{key}")
+
+
+def _track(
+    hass: HomeAssistant,
+    entry: MockConfigEntry,
+    coordinator: FakeCoordinator,
+    create: Callable[[str], MagicMock] = _entity,
+) -> MagicMock:
     add_entities = MagicMock()
     track_dynamic_entities(
         hass,
@@ -51,7 +61,7 @@ def _track(hass: HomeAssistant, entry: MockConfigEntry, coordinator: FakeCoordin
         platform="switch",
         unique_id_prefix=PREFIX,
         keys=lambda data: set(data),
-        create=lambda key: MagicMock(key=key),
+        create=create,
         add_entities=add_entities,
     )
     return add_entities
@@ -122,3 +132,16 @@ async def test_unrelated_entries_untouched(
     _track(hass, mock_config_entry, FakeCoordinator({"a"}))
     for entity_id in untouched:
         assert registry.async_get(entity_id) is not None
+
+
+async def test_unique_id_mismatch_raises(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    mock_config_entry.add_to_hass(hass)
+    with pytest.raises(ValueError, match="E_1_playlist_a"):
+        _track(
+            hass,
+            mock_config_entry,
+            FakeCoordinator({"a"}),
+            create=lambda key: MagicMock(key=key, unique_id=f"E_1_tag_{key}"),
+        )

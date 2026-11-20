@@ -99,10 +99,10 @@ def track_dynamic_entities[K: Hashable](
     """Add entities for new keys and drop registry entries of keys that are gone.
 
     The entity made by ``create(key)`` must have the unique id
-    ``f"{unique_id_prefix}{key}"``. Every sync removes this entry's ``platform``
-    registry entries under the prefix that match no current key, which also
-    clears orphans left from before setup (removed while HA was down or between
-    reloads).
+    ``f"{unique_id_prefix}{key}"``, or a ValueError is raised. Every sync
+    removes this entry's ``platform`` registry entries under the prefix that
+    match no current key, which also clears orphans left from before setup
+    (removed while HA was down or between reloads).
     """
     # The prefix must end with a separator, so "E_1_playlist_" never matches "E_11_...".
     known: set[K] = set()
@@ -124,8 +124,19 @@ def track_dynamic_entities[K: Hashable](
                 registry.async_remove(reg_entry.entity_id)
         known.intersection_update(current)
         if new_keys := current - known:
+            entities = []
+            for key in new_keys:
+                entity = create(key)
+                expected = f"{unique_id_prefix}{key}"
+                if entity.unique_id != expected:
+                    # A wrong id would make every sync delete live registry entries.
+                    raise ValueError(
+                        f"Dynamic entity for key {key!r} has unique id "
+                        f"{entity.unique_id!r}, expected {expected!r}"
+                    )
+                entities.append(entity)
             known.update(new_keys)
-            add_entities([create(key) for key in new_keys])
+            add_entities(entities)
 
     _sync()
     entry.async_on_unload(coordinator.async_add_listener(_sync))

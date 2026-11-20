@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from collections.abc import AsyncGenerator
+from typing import Any
+from unittest.mock import MagicMock, patch
 
+import aiohttp
 from homeassistant.components.media_player import (
     ATTR_MEDIA_ALBUM_NAME,
     ATTR_MEDIA_ARTIST,
@@ -11,6 +14,7 @@ from homeassistant.components.media_player import (
     ATTR_MEDIA_POSITION,
     ATTR_MEDIA_TITLE,
     SERVICE_MEDIA_NEXT_TRACK,
+    MediaPlayerEntity,
     MediaPlayerEntityFeature,
 )
 from homeassistant.components.media_player import (
@@ -20,6 +24,7 @@ from homeassistant.const import (
     ATTR_ENTITY_ID,
     ATTR_ENTITY_PICTURE,
     ATTR_SUPPORTED_FEATURES,
+    CONF_VERIFY_SSL,
     STATE_IDLE,
     STATE_OFF,
     STATE_ON,
@@ -29,10 +34,12 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import aiohttp_client
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
 from custom_components.azuracast.api.errors import AzuraCastConnectionError, AzuraCastResponseError
 from custom_components.azuracast.api.models import NowPlaying
@@ -175,3 +182,60 @@ async def test_string_states_are_truncated(
     await hass.async_block_till_done()
     assert hass.states.get("sensor.party_time_current_playlist").state == "p" * 255
     assert hass.states.get("sensor.party_time_live_streamer").state == "s" * 255
+
+
+ART_URL = "https://radio.example.com/api/station/ambientes/art/a1.jpg"
+
+
+@pytest.fixture
+async def insecure_integration(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: MagicMock,
+    aioclient_mock: AiohttpClientMocker,
+) -> AsyncGenerator[MockConfigEntry]:
+    """Set up an entry that does not verify SSL, with mocked HTTP sessions."""
+    mock_config_entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(
+        mock_config_entry, data={**mock_config_entry.data, CONF_VERIFY_SSL: False}
+    )
+    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+    yield mock_config_entry
+    assert await hass.config_entries.async_unload(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+
+def _media_player(hass: HomeAssistant) -> MediaPlayerEntity:
+    entity = hass.data[MP_DOMAIN].get_entity("media_player.ambientes")
+    assert isinstance(entity, MediaPlayerEntity)
+    return entity
+
+
+async def test_media_art_uses_entry_ssl_setting(
+    hass: HomeAssistant,
+    insecure_integration: MockConfigEntry,
+    aioclient_mock: AiohttpClientMocker,
+) -> None:
+    aioclient_mock.get(ART_URL, content=b"jpeg", headers={"Content-Type": "image/jpeg"})
+    with patch(
+        "custom_components.azuracast.media_player.async_get_clientsession",
+        wraps=aiohttp_client.async_get_clientsession,
+        create=True,
+    ) as get_session:
+        assert await _media_player(hass).async_get_media_image() == (b"jpeg", "image/jpeg")
+    get_session.assert_called_once_with(hass, verify_ssl=False)
+
+
+@pytest.mark.parametrize(
+    "response",
+    [{"exc": aiohttp.ClientError("bad cert")}, {"exc": TimeoutError()}, {"status": 404}],
+)
+async def test_media_art_fetch_failure(
+    hass: HomeAssistant,
+    insecure_integration: MockConfigEntry,
+    aioclient_mock: AiohttpClientMocker,
+    response: dict[str, Any],
+) -> None:
+    aioclient_mock.get(ART_URL, **response)
+    assert await _media_player(hass)._async_fetch_image(ART_URL) == (None, None)

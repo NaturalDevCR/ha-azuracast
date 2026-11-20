@@ -3,23 +3,29 @@
 from __future__ import annotations
 
 from datetime import datetime
+from http import HTTPStatus
 
+import aiohttp
 from homeassistant.components.media_player import (
     MediaPlayerEntity,
     MediaPlayerEntityFeature,
     MediaPlayerState,
     MediaType,
 )
+from homeassistant.const import CONF_VERIFY_SSL
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from .api.models import NowPlaying
+from .const import LOGGER
 from .coordinator import NowPlayingCoordinator
 from .entity import AzuraCastNowPlayingEntity, api_errors
 from .runtime import AzuraCastConfigEntry, StationRuntime
 
 PARALLEL_UPDATES = 1
+ART_FETCH_TIMEOUT = aiohttp.ClientTimeout(total=10)
 
 
 async def async_setup_entry(
@@ -38,7 +44,8 @@ class AzuraCastMediaPlayer(AzuraCastNowPlayingEntity, MediaPlayerEntity):
 
     _attr_name = None
     _attr_media_content_type = MediaType.MUSIC
-    # Proxy artwork through HA: instances are often LAN-only or self-signed.
+    # Browsers load artwork through HA's media proxy, since instances are often
+    # LAN-only; HA fetches it with _async_fetch_image below.
     _attr_media_image_remotely_accessible = False
 
     def __init__(
@@ -106,3 +113,18 @@ class AzuraCastMediaPlayer(AzuraCastNowPlayingEntity, MediaPlayerEntity):
     async def async_media_next_track(self) -> None:
         async with api_errors():
             await self.client.skip_song(self.station.id)
+
+    async def _async_fetch_image(self, url: str) -> tuple[bytes | None, str | None]:
+        """Fetch artwork honouring the entry's verify_ssl (HA's default always verifies)."""
+        session = async_get_clientsession(self.hass, verify_ssl=self._entry.data[CONF_VERIFY_SSL])
+        try:
+            async with session.get(url, timeout=ART_FETCH_TIMEOUT) as response:
+                if response.status != HTTPStatus.OK:
+                    LOGGER.debug("Artwork %s returned HTTP %s", url, response.status)
+                    return None, None
+                content = await response.read()
+                content_type = response.headers.get(aiohttp.hdrs.CONTENT_TYPE)
+        except (aiohttp.ClientError, TimeoutError) as err:
+            LOGGER.debug("Could not fetch artwork %s: %r", url, err)
+            return None, None
+        return content, content_type.split(";")[0].strip() if content_type else None
