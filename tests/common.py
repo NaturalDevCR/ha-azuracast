@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import AsyncIterator, Callable
 import copy
 import json
 from pathlib import Path
@@ -74,3 +76,34 @@ def conflict_playlists() -> list[Playlist]:
             {"id": 21, "name": "ok", "description": "ha:ambiente=chill", "is_enabled": True}
         ),
     ]
+
+
+class FakeStream:
+    """Stand-in for stream_nowplaying, fed from a queue."""
+
+    def __init__(self) -> None:
+        self.queue: asyncio.Queue[NowPlaying | Exception] = asyncio.Queue()
+        self.calls = 0
+
+    def __call__(
+        self, session: object, base_url: str, shortcodes: list[str]
+    ) -> AsyncIterator[NowPlaying]:
+        self.calls += 1
+        self.shortcodes = shortcodes
+        return self._iterate()
+
+    async def _iterate(self) -> AsyncIterator[NowPlaying]:
+        while True:
+            item = await self.queue.get()
+            if isinstance(item, Exception):
+                raise item
+            yield item
+
+
+async def wait_for(predicate: Callable[[], bool], attempts: int = 100) -> None:
+    """Yield to the loop until the predicate is true."""
+    for _ in range(attempts):
+        if predicate():
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError("condition not met")
