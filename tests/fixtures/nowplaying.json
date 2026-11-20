@@ -1,0 +1,88 @@
+[
+  {
+    "station": {
+      "id": 1,
+      "name": "Ambientes",
+      "shortcode": "ambientes",
+      "timezone": "America/Costa_Rica",
+      "public_player_url": "https://radio.example.com/public/ambientes",
+      "is_public": true
+    },
+    "listeners": {"total": 3, "unique": 3, "current": 3},
+    "live": {"is_live": false, "streamer_name": "", "broadcast_start": null, "art": null},
+    "now_playing": {
+      "sh_id": 9001,
+      "played_at": 1795204800,
+      "duration": 240,
+      "playlist": "tarde-chill",
+      "streamer": "",
+      "is_request": false,
+      "song": {
+        "id": "a1",
+        "text": "Trio Mar - Bossa Breeze",
+        "artist": "Trio Mar",
+        "title": "Bossa Breeze",
+        "album": "Costa",
+        "genre": "",
+        "isrc": "",
+        "lyrics": "",
+        "art": "https://radio.example.com/api/station/ambientes/art/a1.jpg",
+        "custom_fields": []
+      },
+      "elapsed": 60,
+      "remaining": 180
+    },
+    "playing_next": {
+      "cued_at": 1795205030,
+      "played_at": 1795205040,
+      "duration": 200,
+      "playlist": "tarde-chill",
+      "is_request": false,
+      "song": {
+        "id": "a2",
+        "text": "Trio Mar - Slow Tide",
+        "artist": "Trio Mar",
+        "title": "Slow Tide",
+        "album": "Costa",
+        "art": null
+      }
+    },
+    "song_history": [],
+    "is_online": true,
+    "cache": null
+  },
+  {
+    "station": {
+      "id": 2,
+      "name": "Party Time",
+      "shortcode": "party_time",
+      "timezone": "America/Costa_Rica",
+      "public_player_url": "https://radio.example.com/public/party_time",
+      "is_public": true
+    },
+    "listeners": {"total": 10, "unique": 8, "current": 8},
+    "live": {"is_live": true, "streamer_name": "DJ Sol", "broadcast_start": 1795204000, "art": null},
+    "now_playing": {
+      "sh_id": 9100,
+      "played_at": 1795204700,
+      "duration": 300,
+      "playlist": "party-mix",
+      "streamer": "DJ Sol",
+      "is_request": false,
+      "song": {
+        "id": "p1",
+        "text": "Banda X - Fiesta",
+        "artist": "Banda X",
+        "title": "Fiesta",
+        "album": "",
+        "art": null
+      },
+      "elapsed": 100,
+      "remaining": 200
+    },
+    "playing_next": null,
+    "song_history": [],
+    "is_online": true,
+    "cache": null
+  }
+]
