@@ -1,0 +1,151 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Conectar con AzuraCast",
+        "description": "Escribe la dirección de tu instancia de AzuraCast. La API key es opcional: sin ella solo obtienes datos de lo que suena; con ella también puedes gestionar playlists, la cola y saltar canciones.",
+        "data": {
+          "url": "URL",
+          "api_key": "API key",
+          "verify_ssl": "Verificar el certificado SSL"
+        },
+        "data_description": {
+          "url": "Dirección base, por ejemplo https://radio.example.com",
+          "api_key": "Créala en AzuraCast en Mi cuenta → API Keys. Usa un usuario dedicado con permisos solo sobre las estaciones que Home Assistant debe gestionar.",
+          "verify_ssl": "Desactívalo solo para instancias con certificado autofirmado."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Actualizar la API key de AzuraCast",
+        "description": "AzuraCast ya no acepta la API key de {name}. Escribe una nueva.",
+        "data": {
+          "api_key": "API key"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigurar AzuraCast",
+        "data": {
+          "url": "URL",
+          "api_key": "API key",
+          "verify_ssl": "Verificar el certificado SSL"
+        },
+        "data_description": {
+          "url": "Dirección base, por ejemplo https://radio.example.com",
+          "api_key": "Déjala vacía para usar la instancia solo en lectura.",
+          "verify_ssl": "Desactívalo solo para instancias con certificado autofirmado."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "No se pudo conectar con AzuraCast en esta dirección.",
+      "invalid_auth": "AzuraCast rechazó la API key.",
+      "invalid_url": "Escribe una dirección completa que empiece con http:// o https://.",
+      "unknown": "Error inesperado."
+    },
+    "abort": {
+      "already_configured": "Esta instancia de AzuraCast ya está configurada.",
+      "reauth_successful": "La API key se actualizó.",
+      "reconfigure_successful": "La configuración se actualizó."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opciones de AzuraCast",
+        "data": {
+          "excluded_stations": "Estaciones a ignorar",
+          "keep_queue_stations": "Mantener la cola al cambiar un selector",
+          "allow_unavailable_stations": "Aceptar valores de selector sin nada programado ahora",
+          "scan_interval": "Intervalo de actualización de playlists"
+        },
+        "data_description": {
+          "excluded_stations": "Estas estaciones no tendrán dispositivo ni entidades.",
+          "keep_queue_stations": "Por defecto, al cambiar un selector se vacía la cola para que el cambio se oiga después de la canción actual. Las estaciones de esta lista conservan su cola.",
+          "allow_unavailable_stations": "Por defecto, se rechaza un valor de selector si ninguna de sus playlists puede sonar ahora. Las estaciones de esta lista lo aceptan igual.",
+          "scan_interval": "Cada cuántos segundos se actualizan las playlists y la cola."
+        }
+      }
+    },
+    "abort": {
+      "not_loaded": "Carga la integración antes de cambiar sus opciones.",
+      "cannot_connect": "No se pudo conectar con AzuraCast para listar las estaciones.",
+      "unknown": "Error inesperado."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "listeners": {"name": "Oyentes"},
+      "current_song": {"name": "Canción actual"},
+      "current_playlist": {"name": "Playlist actual"},
+      "next_song": {"name": "Siguiente canción"},
+      "live_streamer": {"name": "Locutor en vivo"}
+    },
+    "binary_sensor": {
+      "online": {"name": "En línea"},
+      "live": {"name": "DJ en vivo"}
+    },
+    "switch": {
+      "playlist": {"name": "Playlist {name}"}
+    },
+    "button": {
+      "skip_song": {"name": "Saltar canción"},
+      "clear_queue": {"name": "Vaciar cola"}
+    },
+    "select": {
+      "selector": {"name": "{selector}"}
+    }
+  },
+  "exceptions": {
+    "auth_failed": {"message": "AzuraCast rechazó la API key."},
+    "cannot_connect": {"message": "No se pudo conectar con AzuraCast: {error}"},
+    "update_failed": {"message": "Error al actualizar los datos de AzuraCast: {error}"},
+    "missing_permissions": {"message": "La API key no tiene permisos de gestión en la estación {station}."},
+    "api_error": {"message": "AzuraCast devolvió un error: {error}"},
+    "unknown_option": {"message": "{option} no es un valor del selector {selector}."},
+    "value_not_available_now": {"message": "Ninguna playlist con {selector}={value} puede sonar en este momento."},
+    "selector_apply_failed": {"message": "No se pudo aplicar {selector}={value}: {error}"},
+    "no_station_targeted": {"message": "Selecciona al menos una estación de AzuraCast."},
+    "station_not_managed": {"message": "La estación {station} es de solo lectura: la API key no puede gestionarla."},
+    "unknown_playlist": {"message": "La estación {station} no tiene una playlist llamada {playlist}."},
+    "ambiguous_playlist": {"message": "La estación {station} tiene más de una playlist llamada {playlist}; usa su ID numérico."}
+  },
+  "issues": {
+    "sse_unavailable": {
+      "title": "Actualizaciones en tiempo real no disponibles en {instance}",
+      "description": "Home Assistant no pudo abrir el stream de lo que suena en AzuraCast, así que los cambios de canción llegan hasta 30 segundos tarde. En AzuraCast, activa \"Use High-Performance Now Playing Updates\" en Administración → Configuración del sistema y recarga la integración."
+    },
+    "missing_permissions": {
+      "title": "Sin permisos de gestión en {station}",
+      "description": "La API key usada para {instance} ya no puede gestionar la estación {station}. Dale permisos sobre esa estación al usuario de AzuraCast, o exclúyela en las opciones de la integración."
+    },
+    "conflicting_tags": {
+      "title": "Tags en conflicto en {station}",
+      "description": "Estas playlists tienen dos valores para el mismo selector, así que el selector las ignora: {playlists}. Deja un solo tag ha:selector=valor por selector en la descripción de cada playlist."
+    }
+  },
+  "services": {
+    "skip_song": {
+      "name": "Saltar canción",
+      "description": "Salta la canción que suena en las estaciones elegidas."
+    },
+    "clear_queue": {
+      "name": "Vaciar cola",
+      "description": "Quita todas las canciones próximas de la cola del AutoDJ de las estaciones elegidas."
+    },
+    "set_playlists_enabled": {
+      "name": "Activar o desactivar playlists",
+      "description": "Activa o desactiva varias playlists de las estaciones elegidas a la vez.",
+      "fields": {
+        "playlists": {"name": "Playlists", "description": "Nombres o IDs numéricos de las playlists. Un nombre exacto tiene prioridad sobre un ID numérico; si varias playlists comparten un nombre, usa su ID."},
+        "enabled": {"name": "Activadas", "description": "Si las playlists deben quedar activadas."}
+      }
+    },
+    "reshuffle_playlist": {
+      "name": "Rebarajar playlist",
+      "description": "Vuelve a mezclar el orden de las canciones de una playlist.",
+      "fields": {
+        "playlist": {"name": "Playlist", "description": "Nombre o ID numérico de la playlist. Un nombre exacto tiene prioridad sobre un ID numérico; si varias playlists comparten un nombre, usa su ID."}
+      }
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "entity": {
+    "sensor": {
+      "listeners": {"default": "mdi:account-multiple"},
+      "current_song": {"default": "mdi:music-note"},
+      "current_playlist": {"default": "mdi:playlist-music"},
+      "next_song": {"default": "mdi:skip-next-circle-outline"},
+      "live_streamer": {"default": "mdi:microphone"}
+    },
+    "binary_sensor": {
+      "live": {"default": "mdi:microphone-off", "state": {"on": "mdi:microphone"}}
+    },
+    "switch": {
+      "playlist": {"default": "mdi:playlist-remove", "state": {"on": "mdi:playlist-play"}}
+    },
+    "button": {
+      "skip_song": {"default": "mdi:skip-next"},
+      "clear_queue": {"default": "mdi:playlist-minus"}
+    },
+    "select": {
+      "selector": {"default": "mdi:tune-variant"}
+    }
+  },
+  "services": {
+    "skip_song": {"service": "mdi:skip-next"},
+    "clear_queue": {"service": "mdi:playlist-minus"},
+    "set_playlists_enabled": {"service": "mdi:playlist-check"},
+    "reshuffle_playlist": {"service": "mdi:shuffle-variant"}
+  }
+}

@@ -64,7 +64,12 @@ async def call(
 
 
 def is_playlist(status: Any, body: Any) -> bool:
-    return isinstance(status, int) and 200 <= status < 300 and isinstance(body, dict) and "is_enabled" in body
+    return (
+        isinstance(status, int)
+        and 200 <= status < 300
+        and isinstance(body, dict)
+        and "is_enabled" in body
+    )
 
 
 def confirmed(prompt: str) -> bool:
@@ -82,9 +87,11 @@ async def restore(
     """Send the restore PUT and re-read the playlist; never raises an Exception."""
     result: dict[str, Any] = {"status": None, "body": None, "restored": None, "error": None}
     try:
-        result["status"], result["body"] = await call(session, "PUT", url, headers, {"is_enabled": original})
+        result["status"], result["body"] = await call(
+            session, "PUT", url, headers, {"is_enabled": original}
+        )
         _, result["restored"] = await call(session, "GET", url, headers)
-    except Exception as err:  # noqa: BLE001 - reported as a WARNING by the caller
+    except Exception as err:
         result["error"] = repr(err)
     return result
 
@@ -148,12 +155,19 @@ async def main() -> int:
 
             stations_status, stations = results["stations"]
             if not isinstance(stations, list):
-                sys.exit(f"GET /stations did not return a list (HTTP {stations_status}); see {OUT / 'stations.json'}")
-            station = next((s for s in stations if isinstance(s, dict) and s.get("id") == station_id), None)
+                sys.exit(
+                    f"GET /stations did not return a list (HTTP {stations_status}); "
+                    f"see {OUT / 'stations.json'}"
+                )
+            station = next(
+                (s for s in stations if isinstance(s, dict) and s.get("id") == station_id), None
+            )
             if station is None:
                 ids = [s.get("id") for s in stations if isinstance(s, dict)]
                 sys.exit(f"Station id {station_id} not found in /stations (ids: {ids})")
-            summary.append(f"- station has 'timezone': {'timezone' in station} ({station.get('timezone')})")
+            summary.append(
+                f"- station has 'timezone': {'timezone' in station} ({station.get('timezone')})"
+            )
             _, playlists = results["playlists"]
             if isinstance(playlists, list) and playlists:
                 summary.append(f"- playlist keys: {sorted(playlists[0])}")
@@ -166,11 +180,13 @@ async def main() -> int:
                 before_status, before = await call(session, "GET", url, headers)
                 if not is_playlist(before_status, before):
                     sys.exit(
-                        f"GET /station/{station_id}/playlist/{probe_playlist} did not return a playlist "
-                        f"(HTTP {before_status}); nothing was changed"
+                        f"GET /station/{station_id}/playlist/{probe_playlist} "
+                        f"did not return a playlist (HTTP {before_status}); nothing was changed"
                     )
                 original = bool(before["is_enabled"])
-                station_label = f"station {station.get('name')!r} ({station.get('shortcode')}, id {station_id})"
+                station_label = (
+                    f"station {station.get('name')!r} ({station.get('shortcode')}, id {station_id})"
+                )
                 playlist_label = f"playlist {before.get('name')!r} (id {probe_playlist})"
                 print(
                     f"About to flip is_enabled {original} -> {not original} on {playlist_label} "
@@ -179,17 +195,25 @@ async def main() -> int:
                 if not confirmed("Type 'yes' to continue: "):
                     summary.append("- partial PUT: skipped (not confirmed)")
                 else:
-                    record: dict[str, Any] = {"station": station_label, "playlist": playlist_label, "before": before}
+                    record: dict[str, Any] = {
+                        "station": station_label,
+                        "playlist": playlist_label,
+                        "before": before,
+                    }
                     save("partial_put.json", record)
                     changed: set[str] = set()
                     try:
-                        put_status, put_body = await call(session, "PUT", url, headers, {"is_enabled": not original})
+                        put_status, put_body = await call(
+                            session, "PUT", url, headers, {"is_enabled": not original}
+                        )
                         record.update(put_status=put_status, put_body=put_body)
                         after_status, after = await call(session, "GET", url, headers)
                         record.update(after_status=after_status, after=after)
                         if is_playlist(after_status, after):
                             changed = {
-                                k for k in before if k not in ("is_enabled", "links") and before[k] != after.get(k)
+                                k
+                                for k in before
+                                if k not in ("is_enabled", "links") and before[k] != after.get(k)
                             }
                     finally:
                         try:
@@ -204,27 +228,34 @@ async def main() -> int:
                                 else "unknown"
                             )
                             summary.append(
-                                f"- partial PUT: HTTP {record.get('put_status')}, flipped={flipped}, "
-                                f"other fields changed={sorted(changed) or 'none'}, restored={restored_ok}"
+                                f"- partial PUT: HTTP {record.get('put_status')}, "
+                                f"flipped={flipped}, "
+                                f"other fields changed={sorted(changed) or 'none'}, "
+                                f"restored={restored_ok}"
                             )
                             if problems:
                                 exit_code = 1
                                 warning = (
-                                    f"WARNING: {playlist_label} of {station_label} may need manual repair: "
-                                    f"{'; '.join(problems)}. The playlist as it was before the flip is "
+                                    f"WARNING: {playlist_label} of {station_label} "
+                                    f"may need manual repair: "
+                                    f"{'; '.join(problems)}. "
+                                    f"The playlist as it was before the flip is "
                                     f"saved in {OUT / 'partial_put.json'} under 'before'."
                                 )
                                 print(warning, file=sys.stderr)
                                 summary.append(f"- {warning}")
 
             connect = json.dumps(
-                {"subs": {f"station:{station.get('shortcode')}": {"recover": True}}}, separators=(",", ":")
+                {"subs": {f"station:{station.get('shortcode')}": {"recover": True}}},
+                separators=(",", ":"),
             )
             sse_url = f"{api}/live/nowplaying/sse?cf_connect={quote(connect, safe='')}"
             lines: list[str] = []
             try:
                 timeout = aiohttp.ClientTimeout(total=25, sock_read=25)
-                async with session.get(sse_url, headers={"Accept": "text/event-stream"}, timeout=timeout) as resp:
+                async with session.get(
+                    sse_url, headers={"Accept": "text/event-stream"}, timeout=timeout
+                ) as resp:
                     summary.append(f"- SSE: HTTP {resp.status}")
                     deadline = time.monotonic() + 20
                     async for raw in resp.content:

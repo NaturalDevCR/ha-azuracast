@@ -136,7 +136,7 @@
       "name": "Enable or disable playlists",
       "description": "Enables or disables several playlists of the targeted stations at once.",
       "fields": {
-        "playlists": {"name": "Playlists", "description": "Playlist names or numeric IDs."},
+        "playlists": {"name": "Playlists", "description": "Playlist names or numeric IDs. An exact name takes precedence over a numeric ID; a name shared by several playlists must be referenced by its ID."},
         "enabled": {"name": "Enabled", "description": "Whether the playlists should be enabled."}
       }
     },
@@ -144,7 +144,7 @@
       "name": "Reshuffle playlist",
       "description": "Reshuffles the song order of one playlist.",
       "fields": {
-        "playlist": {"name": "Playlist", "description": "Playlist name or numeric ID."}
+        "playlist": {"name": "Playlist", "description": "Playlist name or numeric ID. An exact name takes precedence over a numeric ID; a name shared by several playlists must be referenced by its ID."}
       }
     }
   }
