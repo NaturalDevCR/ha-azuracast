@@ -1,0 +1,149 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to AzuraCast",
+        "description": "Enter the address of your AzuraCast instance. The API key is optional: without it you only get now-playing data; with it you can also manage playlists, the queue and skipping songs.",
+        "data": {
+          "url": "URL",
+          "api_key": "API key",
+          "verify_ssl": "Verify SSL certificate"
+        },
+        "data_description": {
+          "url": "Base address, for example https://radio.example.com",
+          "api_key": "Create it in AzuraCast under My Account → API Keys. Use a dedicated user that only has permissions on the stations Home Assistant should manage.",
+          "verify_ssl": "Turn off only for instances with a self-signed certificate."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Update the AzuraCast API key",
+        "description": "AzuraCast no longer accepts the API key for {name}. Enter a new one.",
+        "data": {
+          "api_key": "API key"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure AzuraCast",
+        "data": {
+          "url": "URL",
+          "api_key": "API key",
+          "verify_ssl": "Verify SSL certificate"
+        },
+        "data_description": {
+          "url": "Base address, for example https://radio.example.com",
+          "api_key": "Leave empty to use the instance read-only.",
+          "verify_ssl": "Turn off only for instances with a self-signed certificate."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach AzuraCast at this address.",
+      "invalid_auth": "AzuraCast rejected the API key.",
+      "invalid_url": "Enter a full address that starts with http:// or https://.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "This AzuraCast instance is already configured.",
+      "reauth_successful": "The API key was updated.",
+      "reconfigure_successful": "The configuration was updated."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "AzuraCast options",
+        "data": {
+          "excluded_stations": "Stations to ignore",
+          "keep_queue_stations": "Keep the queue when a selector changes",
+          "allow_unavailable_stations": "Accept selector values with nothing scheduled now",
+          "scan_interval": "Playlist refresh interval"
+        },
+        "data_description": {
+          "excluded_stations": "These stations get no device or entities.",
+          "keep_queue_stations": "By default, changing a selector clears the upcoming queue so the change is heard after the current song. Stations listed here keep their queue.",
+          "allow_unavailable_stations": "By default, a selector value is rejected when none of its playlists can play right now. Stations listed here accept it anyway.",
+          "scan_interval": "How often playlists and the queue are refreshed, in seconds."
+        }
+      }
+    },
+    "abort": {
+      "not_loaded": "Load the integration before changing its options.",
+      "cannot_connect": "Could not reach AzuraCast to list the stations."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "listeners": {"name": "Listeners"},
+      "current_song": {"name": "Current song"},
+      "current_playlist": {"name": "Current playlist"},
+      "next_song": {"name": "Next song"},
+      "live_streamer": {"name": "Live streamer"}
+    },
+    "binary_sensor": {
+      "online": {"name": "Online"},
+      "live": {"name": "Live DJ"}
+    },
+    "switch": {
+      "playlist": {"name": "Playlist {name}"}
+    },
+    "button": {
+      "skip_song": {"name": "Skip song"},
+      "clear_queue": {"name": "Clear queue"}
+    },
+    "select": {
+      "selector": {"name": "{selector}"}
+    }
+  },
+  "exceptions": {
+    "auth_failed": {"message": "AzuraCast rejected the API key."},
+    "cannot_connect": {"message": "Could not connect to AzuraCast: {error}"},
+    "update_failed": {"message": "Error updating AzuraCast data: {error}"},
+    "missing_permissions": {"message": "The API key has no management permissions on station {station}."},
+    "api_error": {"message": "AzuraCast returned an error: {error}"},
+    "unknown_option": {"message": "{option} is not a value of selector {selector}."},
+    "value_not_available_now": {"message": "No playlist tagged {selector}={value} can play right now."},
+    "selector_apply_failed": {"message": "Could not apply {selector}={value}: {error}"},
+    "no_station_targeted": {"message": "Select at least one AzuraCast station."},
+    "station_not_managed": {"message": "Station {station} is read-only: the API key cannot manage it."},
+    "unknown_playlist": {"message": "Station {station} has no playlist named {playlist}."}
+  },
+  "issues": {
+    "sse_unavailable": {
+      "title": "Real-time updates unavailable on {instance}",
+      "description": "Home Assistant could not open AzuraCast's now-playing stream, so song changes arrive up to 30 seconds late. In AzuraCast, turn on \"Use High-Performance Now Playing Updates\" under Administration → System Settings, then reload the integration."
+    },
+    "missing_permissions": {
+      "title": "No management permissions on {station}",
+      "description": "The API key used for {instance} can no longer manage station {station}. Give the AzuraCast user permissions on that station, or exclude it in the integration options."
+    },
+    "conflicting_tags": {
+      "title": "Conflicting tags on {station}",
+      "description": "These playlists have two values for the same selector, so the selector ignores them: {playlists}. Leave one ha:selector=value tag per selector in each playlist description."
+    }
+  },
+  "services": {
+    "skip_song": {
+      "name": "Skip song",
+      "description": "Skips the song playing on the targeted stations."
+    },
+    "clear_queue": {
+      "name": "Clear queue",
+      "description": "Removes every upcoming song from the AutoDJ queue of the targeted stations."
+    },
+    "set_playlists_enabled": {
+      "name": "Enable or disable playlists",
+      "description": "Enables or disables several playlists of the targeted stations at once.",
+      "fields": {
+        "playlists": {"name": "Playlists", "description": "Playlist names or numeric IDs."},
+        "enabled": {"name": "Enabled", "description": "Whether the playlists should be enabled."}
+      }
+    },
+    "reshuffle_playlist": {
+      "name": "Reshuffle playlist",
+      "description": "Reshuffles the song order of one playlist.",
+      "fields": {
+        "playlist": {"name": "Playlist", "description": "Playlist name or numeric ID."}
+      }
+    }
+  }
+}
