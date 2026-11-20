@@ -85,6 +85,46 @@ class AzuraCastNowPlayingEntity(AzuraCastEntity[NowPlayingCoordinator]):
         return super().available and self.coordinator.data is not None
 
 
+@callback
+def _remove_registry_entries(
+    hass: HomeAssistant,
+    entry: AzuraCastConfigEntry,
+    *,
+    platform: str,
+    unique_id_prefix: str,
+    keep: set[str],
+) -> None:
+    """Remove this entry's ``platform`` registry entries under the prefix, except ``keep``."""
+    registry = er.async_get(hass)
+    for reg_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if (
+            reg_entry.domain == platform
+            and reg_entry.platform == DOMAIN
+            and reg_entry.unique_id.startswith(unique_id_prefix)
+            and reg_entry.unique_id not in keep
+        ):
+            registry.async_remove(reg_entry.entity_id)
+
+
+@callback
+def remove_dynamic_entities(
+    hass: HomeAssistant,
+    entry: AzuraCastConfigEntry,
+    *,
+    platform: str,
+    unique_id_prefix: str,
+) -> None:
+    """Remove every ``platform`` registry entry of this entry under the prefix.
+
+    For a station that no longer gets a management coordinator (lost
+    permission or API key), whose dynamic entities would otherwise never be
+    synced again and would stay orphaned in the registry.
+    """
+    _remove_registry_entries(
+        hass, entry, platform=platform, unique_id_prefix=unique_id_prefix, keep=set()
+    )
+
+
 def track_dynamic_entities[K: Hashable](
     hass: HomeAssistant,
     entry: AzuraCastConfigEntry,
@@ -112,16 +152,13 @@ def track_dynamic_entities[K: Hashable](
         if coordinator.data is None:
             return
         current = keys(coordinator.data)
-        wanted = {f"{unique_id_prefix}{key}" for key in current}
-        registry = er.async_get(hass)
-        for reg_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
-            if (
-                reg_entry.domain == platform
-                and reg_entry.platform == DOMAIN
-                and reg_entry.unique_id.startswith(unique_id_prefix)
-                and reg_entry.unique_id not in wanted
-            ):
-                registry.async_remove(reg_entry.entity_id)
+        _remove_registry_entries(
+            hass,
+            entry,
+            platform=platform,
+            unique_id_prefix=unique_id_prefix,
+            keep={f"{unique_id_prefix}{key}" for key in current},
+        )
         known.intersection_update(current)
         if new_keys := current - known:
             entities = []
