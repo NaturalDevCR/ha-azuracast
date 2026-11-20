@@ -36,7 +36,7 @@ from .issues import async_delete_entry_issues, set_conflicting_tags, set_missing
 from .runtime import AzuraCastConfigEntry, AzuraCastRuntime, StationRuntime, station_device_key
 from .services import async_setup_services
 
-PLATFORMS: list[Platform] = []
+PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.MEDIA_PLAYER, Platform.SENSOR]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
