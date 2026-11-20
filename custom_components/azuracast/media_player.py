@@ -57,7 +57,7 @@ class AzuraCastMediaPlayer(AzuraCastNowPlayingEntity, MediaPlayerEntity):
         super().__init__(coordinator, entry, runtime, "media_player")
         self._attr_supported_features = (
             MediaPlayerEntityFeature.NEXT_TRACK
-            if runtime.manage is not None
+            if runtime.can_broadcast
             else MediaPlayerEntityFeature(0)
         )
         self._attr_media_position_updated_at: datetime | None = dt_util.utcnow()

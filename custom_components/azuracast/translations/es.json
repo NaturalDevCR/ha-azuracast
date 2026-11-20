@@ -106,6 +106,7 @@
     "selector_apply_failed": {"message": "No se pudo aplicar {selector}={value}: {error}"},
     "no_station_targeted": {"message": "Selecciona al menos una estación de AzuraCast."},
     "station_not_managed": {"message": "La estación {station} es de solo lectura: la API key no puede gestionarla."},
+    "station_cannot_broadcast": {"message": "La estación {station} no permite saltar canciones ni vaciar la cola: la API key no tiene permiso de transmisión sobre ella."},
     "unknown_playlist": {"message": "La estación {station} no tiene una playlist llamada {playlist}."},
     "ambiguous_playlist": {"message": "La estación {station} tiene más de una playlist llamada {playlist}; usa su ID numérico."}
   },

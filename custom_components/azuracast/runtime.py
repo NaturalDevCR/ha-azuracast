@@ -28,6 +28,15 @@ class StationRuntime:
     clear_queue_on_change: bool
     reject_unavailable_values: bool
 
+    @property
+    def can_broadcast(self) -> bool:
+        """Whether the key may use the queue and skip songs on this station."""
+        return (
+            self.manage is not None
+            and self.manage.data is not None
+            and self.manage.data.can_broadcast
+        )
+
 
 @dataclass(slots=True)
 class AzuraCastRuntime:

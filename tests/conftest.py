@@ -80,3 +80,18 @@ async def init_integration(
     if mock_config_entry.state is ConfigEntryState.LOADED:
         assert await hass.config_entries.async_unload(mock_config_entry.entry_id)
         await hass.async_block_till_done()
+
+
+@pytest.fixture
+async def init_no_broadcast(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry, mock_client: MagicMock
+) -> AsyncGenerator[MockConfigEntry]:
+    """Set up with a key that can manage media but not broadcasting (queue is 403)."""
+    mock_client.get_queue.side_effect = AzuraCastPermissionError(403, "Forbidden")
+    mock_config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+    yield mock_config_entry
+    if mock_config_entry.state is ConfigEntryState.LOADED:
+        assert await hass.config_entries.async_unload(mock_config_entry.entry_id)
+        await hass.async_block_till_done()

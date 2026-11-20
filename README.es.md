@@ -46,6 +46,13 @@ Copia `custom_components/azuracast` en la carpeta `config/custom_components/` de
 
 **Usa un usuario de AzuraCast dedicado a Home Assistant.** Las API keys de AzuraCast tienen todos los permisos del usuario que las creó. Dale a ese usuario permisos solo sobre las estaciones que Home Assistant debe gestionar.
 
+El usuario necesita estos permisos de estación en AzuraCast:
+
+- **Manage Station Media** para los interruptores de playlists, los selectores y las acciones de playlists.
+- **Manage Station Broadcasting** para la cola y para saltar canciones: los botones de saltar canción y vaciar la cola, el salto en el reproductor multimedia y las acciones `skip_song` y `clear_queue`.
+
+Una estación con Media pero sin Broadcasting conserva sus interruptores y selectores, pero no tiene controles para saltar canciones ni vaciar la cola, y al elegir un valor de selector se cambian las playlists sin vaciar la cola. Los cambios de permisos se aplican al recargar la integración.
+
 La URL, la API key y la opción de SSL se pueden cambiar después con **Reconfigurar**. Si AzuraCast deja de aceptar la key (por ejemplo, porque se eliminó), Home Assistant te pide una nueva. AzuraCast responde a una key rechazada con "403 Forbidden", igual que a un permiso que falta, así que la integración comprueba la key con el endpoint de la cuenta actual para distinguirlos: una key que sigue funcionando pero perdió sus permisos sobre una estación genera un aviso de reparación.
 
 ### Opciones

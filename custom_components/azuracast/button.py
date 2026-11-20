@@ -6,13 +6,14 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
+from homeassistant.components.button import DOMAIN as BUTTON_DOMAIN
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .api.client import AzuraCastClient
 from .coordinator import ManageCoordinator
-from .entity import AzuraCastEntity, api_errors
+from .entity import AzuraCastEntity, api_errors, remove_entities
 from .runtime import AzuraCastConfigEntry, StationRuntime
 
 PARALLEL_UPDATES = 1
@@ -40,12 +41,22 @@ async def async_setup_entry(
     entry: AzuraCastConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    async_add_entities(
-        AzuraCastButton(rt.manage, entry, rt, description)
-        for rt in entry.runtime_data.stations.values()
-        if rt.manage is not None
-        for description in BUTTONS
-    )
+    entities: list[AzuraCastButton] = []
+    for rt in entry.runtime_data.stations.values():
+        # Skip and clear need the Broadcasting permission; it is read from the
+        # first refresh, so a later permission change needs a reload.
+        if rt.manage is None or not rt.can_broadcast:
+            remove_entities(
+                hass,
+                entry,
+                platform=BUTTON_DOMAIN,
+                unique_ids={f"{rt.device_key}_{description.key}" for description in BUTTONS},
+            )
+            continue
+        entities.extend(
+            AzuraCastButton(rt.manage, entry, rt, description) for description in BUTTONS
+        )
+    async_add_entities(entities)
 
 
 class AzuraCastButton(AzuraCastEntity[ManageCoordinator], ButtonEntity):

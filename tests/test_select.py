@@ -373,3 +373,18 @@ async def test_pending_without_song_at_apply_clears_on_first_match(
     nowplaying.push(make_nowplaying(0, song_id="a1", playlist="tarde-lounge"))
     await hass.async_block_till_done()
     assert hass.states.get(ENTITY).attributes["pending_value"] is None
+
+
+async def test_select_without_broadcast_keeps_queue(
+    hass: HomeAssistant, init_no_broadcast: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    """Playlists still switch; the queue clear is skipped and reported as not done."""
+    events = async_capture_events(hass, EVENT_SELECTOR_APPLIED)
+    await _select(hass, "lounge")
+    assert mock_client.set_playlist_enabled.await_args_list == [
+        call(1, 12, True),
+        call(1, 10, False),
+        call(1, 11, False),
+    ]
+    mock_client.clear_queue.assert_not_called()
+    assert events[0].data["cleared_queue"] is False

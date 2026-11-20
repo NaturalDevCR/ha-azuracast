@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable, Hashable
+from collections.abc import AsyncIterator, Callable, Collection, Hashable
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -91,19 +91,31 @@ def _remove_registry_entries(
     entry: AzuraCastConfigEntry,
     *,
     platform: str,
-    unique_id_prefix: str,
-    keep: set[str],
+    remove: Callable[[str], bool],
 ) -> None:
-    """Remove this entry's ``platform`` registry entries under the prefix, except ``keep``."""
+    """Remove this entry's ``platform`` registry entries whose unique id matches ``remove``."""
     registry = er.async_get(hass)
     for reg_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
         if (
             reg_entry.domain == platform
             and reg_entry.platform == DOMAIN
-            and reg_entry.unique_id.startswith(unique_id_prefix)
-            and reg_entry.unique_id not in keep
+            and remove(reg_entry.unique_id)
         ):
             registry.async_remove(reg_entry.entity_id)
+
+
+@callback
+def remove_entities(
+    hass: HomeAssistant,
+    entry: AzuraCastConfigEntry,
+    *,
+    platform: str,
+    unique_ids: Collection[str],
+) -> None:
+    """Remove this entry's ``platform`` registry entries with exactly these unique ids."""
+    _remove_registry_entries(
+        hass, entry, platform=platform, remove=lambda unique_id: unique_id in unique_ids
+    )
 
 
 @callback
@@ -121,7 +133,10 @@ def remove_dynamic_entities(
     synced again and would stay orphaned in the registry.
     """
     _remove_registry_entries(
-        hass, entry, platform=platform, unique_id_prefix=unique_id_prefix, keep=set()
+        hass,
+        entry,
+        platform=platform,
+        remove=lambda unique_id: unique_id.startswith(unique_id_prefix),
     )
 
 
@@ -152,12 +167,14 @@ def track_dynamic_entities[K: Hashable](
         if coordinator.data is None:
             return
         current = keys(coordinator.data)
+        keep = {f"{unique_id_prefix}{key}" for key in current}
         _remove_registry_entries(
             hass,
             entry,
             platform=platform,
-            unique_id_prefix=unique_id_prefix,
-            keep={f"{unique_id_prefix}{key}" for key in current},
+            remove=lambda unique_id: (
+                unique_id.startswith(unique_id_prefix) and unique_id not in keep
+            ),
         )
         known.intersection_update(current)
         if new_keys := current - known:

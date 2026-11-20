@@ -26,6 +26,8 @@ class ManageData:
     playlists: tuple[Playlist, ...]
     queue: tuple[QueueItem, ...]
     selectors: dict[str, Selector]
+    # False when the key may manage media but not broadcasting (the queue is 403).
+    can_broadcast: bool = True
 
     def playlist_by_name(self, name: str | None) -> Playlist | None:
         if not name:
@@ -59,7 +61,6 @@ class ManageCoordinator(DataUpdateCoordinator[ManageData]):
     async def _async_update_data(self) -> ManageData:
         try:
             playlists = await self.client.get_playlists(self.station.id)
-            queue = await self.client.get_queue(self.station.id)
         except AzuraCastAuthError as err:
             raise _auth_failed() from err
         except AzuraCastPermissionError as err:
@@ -72,6 +73,17 @@ class ManageCoordinator(DataUpdateCoordinator[ManageData]):
             ) from err
         except AzuraCastError as err:
             raise _update_failed(err) from err
+        # The queue needs the Broadcasting permission, playlists only Media: a 403
+        # here alone leaves playlists and selectors manageable.
+        can_broadcast = True
+        try:
+            queue = await self.client.get_queue(self.station.id)
+        except AzuraCastAuthError as err:
+            raise _auth_failed() from err
+        except AzuraCastPermissionError:
+            queue, can_broadcast = [], False
+        except AzuraCastError as err:
+            raise _update_failed(err) from err
         set_missing_permissions(self.hass, self.config_entry, self.station, False)
         selectors = build_selectors(playlists)
         set_conflicting_tags(
@@ -80,7 +92,12 @@ class ManageCoordinator(DataUpdateCoordinator[ManageData]):
             self.station,
             [playlist for selector in selectors.values() for playlist in selector.conflicts],
         )
-        return ManageData(playlists=tuple(playlists), queue=tuple(queue), selectors=selectors)
+        return ManageData(
+            playlists=tuple(playlists),
+            queue=tuple(queue),
+            selectors=selectors,
+            can_broadcast=can_broadcast,
+        )
 
     async def _async_check_api_key(self) -> None:
         """Tell a rejected key (reauth) from a key that lacks a station permission.

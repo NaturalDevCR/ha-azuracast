@@ -239,3 +239,10 @@ async def test_media_art_fetch_failure(
 ) -> None:
     aioclient_mock.get(ART_URL, **response)
     assert await _media_player(hass)._async_fetch_image(ART_URL) == (None, None)
+
+
+async def test_media_player_without_broadcast_cannot_skip(
+    hass: HomeAssistant, init_no_broadcast: MockConfigEntry
+) -> None:
+    state = hass.states.get("media_player.ambientes")
+    assert state.attributes[ATTR_SUPPORTED_FEATURES] == 0

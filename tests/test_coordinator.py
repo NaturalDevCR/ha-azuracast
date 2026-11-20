@@ -226,17 +226,45 @@ async def test_conflicting_tags_issue_clears(
     assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
 
 
-async def test_manage_coordinator_queue_permission_issue(
+async def test_manage_coordinator_queue_forbidden_is_not_broadcast(
     hass: HomeAssistant, entry: MockConfigEntry, issue_registry: ir.IssueRegistry
 ) -> None:
+    """A key with Media but no Broadcasting permission still manages playlists."""
     client = AsyncMock()
     client.get_playlists.return_value = playlists()
     client.get_queue.side_effect = AzuraCastPermissionError(403, "Forbidden")
     coordinator = _manage(hass, entry, client)
     await coordinator.async_refresh()
-    assert not coordinator.last_update_success
+    assert coordinator.last_update_success
+    assert coordinator.data.queue == ()
+    assert coordinator.data.can_broadcast is False
+    assert [p.id for p in coordinator.data.playlists] == [10, 11, 12, 13, 14]
     issue_id = f"missing_permissions_{entry.entry_id}_1"
-    assert issue_registry.async_get_issue(DOMAIN, issue_id) is not None
+    assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
+    client.get_account.assert_not_called()
+
+
+async def test_manage_coordinator_can_broadcast_by_default(
+    hass: HomeAssistant, entry: MockConfigEntry
+) -> None:
+    client = AsyncMock()
+    client.get_playlists.return_value = playlists()
+    client.get_queue.return_value = queue()
+    coordinator = _manage(hass, entry, client)
+    await coordinator.async_refresh()
+    assert coordinator.data.can_broadcast is True
+    assert len(coordinator.data.queue) == len(queue())
+
+
+async def test_manage_coordinator_queue_connection_error(
+    hass: HomeAssistant, entry: MockConfigEntry
+) -> None:
+    client = AsyncMock()
+    client.get_playlists.return_value = playlists()
+    client.get_queue.side_effect = AzuraCastConnectionError("down")
+    coordinator = _manage(hass, entry, client)
+    await coordinator.async_refresh()
+    assert not coordinator.last_update_success
 
 
 async def test_runtime_rejected_key_starts_reauth(

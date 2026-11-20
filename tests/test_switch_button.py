@@ -20,7 +20,10 @@ from homeassistant.helpers import entity_registry as er
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.azuracast.api.errors import AzuraCastResponseError
+from custom_components.azuracast.api.errors import (
+    AzuraCastPermissionError,
+    AzuraCastResponseError,
+)
 from custom_components.azuracast.api.models import Playlist
 from custom_components.azuracast.const import DOMAIN
 
@@ -126,3 +129,46 @@ async def test_buttons(
     )
     mock_client.clear_queue.assert_awaited_once_with(1)
     assert hass.states.get("button.party_time_skip_song") is None
+
+
+async def test_no_broadcast_station_has_no_buttons(
+    hass: HomeAssistant, init_no_broadcast: MockConfigEntry
+) -> None:
+    """Media permission alone keeps playlists and selectors, but not skip or clear."""
+    assert hass.states.get("button.ambientes_skip_song") is None
+    assert hass.states.get("button.ambientes_clear_queue") is None
+    assert hass.states.get("switch.ambientes_playlist_tarde_chill") is not None
+    assert hass.states.get("select.ambientes_ambiente") is not None
+
+
+@pytest.mark.parametrize("no_broadcast", [False, True])
+async def test_orphan_buttons_removed(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: MagicMock,
+    entity_registry: er.EntityRegistry,
+    no_broadcast: bool,
+) -> None:
+    """Exact skip/clear unique ids go for stations that cannot broadcast; others stay."""
+    if no_broadcast:
+        mock_client.get_queue.side_effect = AzuraCastPermissionError(403, "Forbidden")
+    mock_config_entry.add_to_hass(hass)
+    entry_id = mock_config_entry.entry_id
+
+    def _register(unique_id: str) -> str:
+        return entity_registry.async_get_or_create(
+            BUTTON_DOMAIN, DOMAIN, unique_id, config_entry=mock_config_entry
+        ).entity_id
+
+    read_only = [_register(f"{entry_id}_2_skip_song"), _register(f"{entry_id}_2_clear_queue")]
+    station_1 = [_register(f"{entry_id}_1_skip_song"), _register(f"{entry_id}_1_clear_queue")]
+    unrelated = _register(f"{entry_id}_2_skip_song_extra")
+    assert await hass.config_entries.async_setup(entry_id)
+    await hass.async_block_till_done()
+    for entity_id in read_only:
+        assert entity_registry.async_get(entity_id) is None
+    for entity_id in station_1:
+        assert (entity_registry.async_get(entity_id) is None) is no_broadcast
+    assert entity_registry.async_get(unrelated) is not None
+    assert await hass.config_entries.async_unload(entry_id)
+    await hass.async_block_till_done()

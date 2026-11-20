@@ -274,3 +274,36 @@ async def test_reshuffle_by_name(
         blocking=True,
     )
     mock_client.reshuffle_playlist.assert_awaited_once_with(1, 11)
+
+
+@pytest.mark.parametrize("service", ["skip_song", "clear_queue"])
+async def test_station_without_broadcast_rejected(
+    hass: HomeAssistant,
+    init_no_broadcast: MockConfigEntry,
+    mock_client: MagicMock,
+    device_registry: dr.DeviceRegistry,
+    service: str,
+) -> None:
+    with pytest.raises(ServiceValidationError) as info:
+        await hass.services.async_call(
+            DOMAIN,
+            service,
+            {ATTR_DEVICE_ID: _device(device_registry, init_no_broadcast, 1)},
+            blocking=True,
+        )
+    assert info.value.translation_key == "station_cannot_broadcast"
+    assert info.value.translation_placeholders == {"station": "Ambientes"}
+    mock_client.skip_song.assert_not_called()
+    mock_client.clear_queue.assert_not_called()
+
+
+async def test_playlist_services_work_without_broadcast(
+    hass: HomeAssistant, init_no_broadcast: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    await hass.services.async_call(
+        DOMAIN,
+        "set_playlists_enabled",
+        {ATTR_ENTITY_ID: "media_player.ambientes", "playlists": ["tarde-lounge"], "enabled": True},
+        blocking=True,
+    )
+    mock_client.set_playlist_enabled.assert_awaited_once_with(1, 12, True)

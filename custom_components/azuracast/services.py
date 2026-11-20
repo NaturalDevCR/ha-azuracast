@@ -115,14 +115,27 @@ def _find_playlist(runtime: StationRuntime, manage: ManageCoordinator, ref: str)
     )
 
 
+def _broadcast_targets(hass: HomeAssistant, call: ServiceCall) -> list[Target]:
+    """Return the targets, rejecting the call if any station cannot broadcast."""
+    targets = _targets(hass, call)
+    for _, runtime, _ in targets:
+        if not runtime.can_broadcast:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="station_cannot_broadcast",
+                translation_placeholders={"station": runtime.station.name},
+            )
+    return targets
+
+
 async def _async_skip_song(call: ServiceCall) -> None:
-    for client, runtime, _ in _targets(call.hass, call):
+    for client, runtime, _ in _broadcast_targets(call.hass, call):
         async with api_errors():
             await client.skip_song(runtime.station.id)
 
 
 async def _async_clear_queue(call: ServiceCall) -> None:
-    for client, runtime, manage in _targets(call.hass, call):
+    for client, runtime, manage in _broadcast_targets(call.hass, call):
         try:
             async with api_errors():
                 await client.clear_queue(runtime.station.id)

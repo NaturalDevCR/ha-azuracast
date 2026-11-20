@@ -152,7 +152,11 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
                 translation_key="value_not_available_now",
                 translation_placeholders={"value": option, "selector": self.selector_key},
             )
-        clear_queue = not repair and self._runtime.clear_queue_on_change
+        # Without the Broadcasting permission the playlists still switch; the
+        # queue is left alone and the event reports it was not cleared.
+        clear_queue = (
+            not repair and self._runtime.clear_queue_on_change and self._runtime.can_broadcast
+        )
         try:
             await execute_plan(self.client, self.station.id, plan, clear_queue=clear_queue)
         except AzuraCastError as err:
