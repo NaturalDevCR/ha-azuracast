@@ -106,7 +106,8 @@
     "selector_apply_failed": {"message": "Could not apply {selector}={value}: {error}"},
     "no_station_targeted": {"message": "Select at least one AzuraCast station."},
     "station_not_managed": {"message": "Station {station} is read-only: the API key cannot manage it."},
-    "unknown_playlist": {"message": "Station {station} has no playlist named {playlist}."}
+    "unknown_playlist": {"message": "Station {station} has no playlist named {playlist}."},
+    "ambiguous_playlist": {"message": "Station {station} has more than one playlist named {playlist}; use its numeric ID."}
   },
   "issues": {
     "sse_unavailable": {

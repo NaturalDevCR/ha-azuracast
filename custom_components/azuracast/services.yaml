@@ -2,18 +2,21 @@ skip_song:
   target:
     device:
       integration: azuracast
+      model: Station
     entity:
       integration: azuracast
 clear_queue:
   target:
     device:
       integration: azuracast
+      model: Station
     entity:
       integration: azuracast
 set_playlists_enabled:
   target:
     device:
       integration: azuracast
+      model: Station
     entity:
       integration: azuracast
   fields:
@@ -32,6 +35,7 @@ reshuffle_playlist:
   target:
     device:
       integration: azuracast
+      model: Station
     entity:
       integration: azuracast
   fields:

@@ -28,7 +28,9 @@ ATTR_ENABLED = "enabled"
 TARGET_SCHEMA = cv.make_entity_service_schema({})
 SET_PLAYLISTS_SCHEMA = cv.make_entity_service_schema(
     {
-        probatio.Required(ATTR_PLAYLISTS): probatio.All(cv.ensure_list, [cv.string]),
+        probatio.Required(ATTR_PLAYLISTS): probatio.All(
+            cv.ensure_list, [cv.string], probatio.Length(min=1)
+        ),
         probatio.Required(ATTR_ENABLED): cv.boolean,
     }
 )
@@ -92,13 +94,24 @@ def _targets(hass: HomeAssistant, call: ServiceCall) -> list[Target]:
 
 
 def _find_playlist(runtime: StationRuntime, manage: ManageCoordinator, ref: str) -> Playlist:
+    """Resolve a playlist reference: an exact name first, then a numeric id."""
+    placeholders = {"playlist": ref, "station": runtime.station.name}
+    named = [playlist for playlist in manage.data.playlists if playlist.name == ref]
+    if len(named) == 1:
+        return named[0]
+    if named:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="ambiguous_playlist",
+            translation_placeholders=placeholders,
+        )
     for playlist in manage.data.playlists:
-        if playlist.name == ref or str(playlist.id) == ref:
+        if str(playlist.id) == ref:
             return playlist
     raise ServiceValidationError(
         translation_domain=DOMAIN,
         translation_key="unknown_playlist",
-        translation_placeholders={"playlist": ref, "station": runtime.station.name},
+        translation_placeholders=placeholders,
     )
 
 
@@ -110,9 +123,11 @@ async def _async_skip_song(call: ServiceCall) -> None:
 
 async def _async_clear_queue(call: ServiceCall) -> None:
     for client, runtime, manage in _targets(call.hass, call):
-        async with api_errors():
-            await client.clear_queue(runtime.station.id)
-        await manage.async_refresh()
+        try:
+            async with api_errors():
+                await client.clear_queue(runtime.station.id)
+        finally:
+            await manage.async_refresh()
 
 
 async def _async_set_playlists_enabled(call: ServiceCall) -> None:
@@ -126,12 +141,14 @@ async def _async_set_playlists_enabled(call: ServiceCall) -> None:
         for client, runtime, manage in _targets(call.hass, call)
     ]
     for client, runtime, manage, playlists in work:
-        async with api_errors():
-            for playlist in playlists:
-                await client.set_playlist_enabled(
-                    runtime.station.id, playlist.id, call.data[ATTR_ENABLED]
-                )
-        await manage.async_refresh()
+        try:
+            async with api_errors():
+                for playlist in playlists:
+                    await client.set_playlist_enabled(
+                        runtime.station.id, playlist.id, call.data[ATTR_ENABLED]
+                    )
+        finally:
+            await manage.async_refresh()
 
 
 async def _async_reshuffle_playlist(call: ServiceCall) -> None:
@@ -140,6 +157,8 @@ async def _async_reshuffle_playlist(call: ServiceCall) -> None:
         for client, runtime, manage in _targets(call.hass, call)
     ]
     for client, runtime, manage, playlist in work:
-        async with api_errors():
-            await client.reshuffle_playlist(runtime.station.id, playlist.id)
-        await manage.async_refresh()
+        try:
+            async with api_errors():
+                await client.reshuffle_playlist(runtime.station.id, playlist.id)
+        finally:
+            await manage.async_refresh()
