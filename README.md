@@ -158,11 +158,14 @@ Now-playing data is pushed through the stream; polling every 30 s is only a fall
 - Changes are heard at the next song boundary, not instantly.
 - Time blocks of the same selector value should not overlap. How AzuraCast picks between overlapping scheduled playlists has not been verified yet.
 - A playlist with two values of the same selector is ignored by that selector, and a repair issue lists it.
+- A renamed playlist keeps its old switch name until the integration is reloaded.
+- If a station loses its management permission, its playlist switches and selects are removed at the next reload, together with any customization made to them in Home Assistant (names, icons, areas, entity IDs).
 
 ## Troubleshooting
 
 - **Song changes arrive late:** check the repair issue about real-time updates and turn on high-performance now-playing updates.
-- **A station has no switches or select:** the API key has no permissions on it. Check the repair issue or the diagnostics.
+- **A station has no switches or select:** the integration has no API key, or the AzuraCast user that owns it lacks **Manage Station Media** on that station. A station that is already read-only at setup gets no repair issue: check the user's permissions in AzuraCast and the station's `manage` value in the diagnostics, then reload the integration.
+- **A station has no skip or clear-queue button:** the AzuraCast user lacks **Manage Station Broadcasting** on that station. Grant it and reload the integration.
 - **A selector value is rejected:** none of its playlists is scheduled now. Check the schedules in AzuraCast or allow it in the options.
 - **An action says a playlist name is ambiguous:** several playlists share that name. Use the playlist's numeric ID.
 

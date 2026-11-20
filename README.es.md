@@ -158,11 +158,14 @@ Los datos de lo que suena llegan por el stream; consultar cada 30 s es solo un r
 - Los cambios se oyen al terminar la canción actual, no al instante.
 - Los bloques horarios de un mismo valor de selector no deberían solaparse. Todavía no se ha verificado cómo elige AzuraCast entre playlists programadas que se solapan.
 - Una playlist con dos valores del mismo selector queda fuera de ese selector, y un aviso de reparación la menciona.
+- Una playlist renombrada conserva el nombre anterior de su interruptor hasta que se recarga la integración.
+- Si una estación pierde su permiso de gestión, sus interruptores de playlists y sus select se eliminan en la siguiente recarga, junto con cualquier personalización hecha en Home Assistant (nombres, iconos, áreas, IDs de entidad).
 
 ## Solución de problemas
 
 - **Los cambios de canción llegan tarde:** revisa el aviso de reparación sobre las actualizaciones en tiempo real y activa las actualizaciones de alto rendimiento de lo que suena.
-- **Una estación no tiene interruptores ni select:** la API key no tiene permisos sobre ella. Revisa el aviso de reparación o el diagnóstico.
+- **Una estación no tiene interruptores ni select:** la integración no tiene API key, o el usuario de AzuraCast dueño de la key no tiene **Manage Station Media** sobre esa estación. Una estación que ya es de solo lectura al configurarse no genera aviso de reparación: revisa los permisos del usuario en AzuraCast y el valor `manage` de la estación en el diagnóstico, y luego recarga la integración.
+- **Una estación no tiene botones para saltar canción ni vaciar la cola:** el usuario de AzuraCast no tiene **Manage Station Broadcasting** sobre esa estación. Dale ese permiso y recarga la integración.
 - **Se rechaza un valor de selector:** ninguna de sus playlists está programada ahora. Revisa las programaciones en AzuraCast o permítelo en las opciones.
 - **Una acción dice que el nombre de una playlist es ambiguo:** varias playlists comparten ese nombre. Usa el ID numérico de la playlist.
 
