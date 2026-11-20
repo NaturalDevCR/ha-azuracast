@@ -10,7 +10,7 @@
           "verify_ssl": "Verificar el certificado SSL"
         },
         "data_description": {
-          "url": "Dirección base, por ejemplo https://radio.example.com",
+          "url": "Dirección base de tu instancia de AzuraCast, con http:// o https://.",
           "api_key": "Créala en AzuraCast en Mi cuenta → API Keys. Usa un usuario dedicado con permisos solo sobre las estaciones que Home Assistant debe gestionar.",
           "verify_ssl": "Desactívalo solo para instancias con certificado autofirmado."
         }
@@ -30,7 +30,7 @@
           "verify_ssl": "Verificar el certificado SSL"
         },
         "data_description": {
-          "url": "Dirección base, por ejemplo https://radio.example.com",
+          "url": "Dirección base de tu instancia de AzuraCast, con http:// o https://.",
           "api_key": "Déjala vacía para usar la instancia solo en lectura.",
           "verify_ssl": "Desactívalo solo para instancias con certificado autofirmado."
         }

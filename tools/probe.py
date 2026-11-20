@@ -91,7 +91,7 @@ async def restore(
             session, "PUT", url, headers, {"is_enabled": original}
         )
         _, result["restored"] = await call(session, "GET", url, headers)
-    except Exception as err:
+    except Exception as err:  # reported as a WARNING by the caller
         result["error"] = repr(err)
     return result
 

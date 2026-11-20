@@ -10,7 +10,7 @@
           "verify_ssl": "Verify SSL certificate"
         },
         "data_description": {
-          "url": "Base address, for example https://radio.example.com",
+          "url": "Base address of your AzuraCast instance, including http:// or https://.",
           "api_key": "Create it in AzuraCast under My Account → API Keys. Use a dedicated user that only has permissions on the stations Home Assistant should manage.",
           "verify_ssl": "Turn off only for instances with a self-signed certificate."
         }
@@ -30,7 +30,7 @@
           "verify_ssl": "Verify SSL certificate"
         },
         "data_description": {
-          "url": "Base address, for example https://radio.example.com",
+          "url": "Base address of your AzuraCast instance, including http:// or https://.",
           "api_key": "Leave empty to use the instance read-only.",
           "verify_ssl": "Turn off only for instances with a self-signed certificate."
         }
