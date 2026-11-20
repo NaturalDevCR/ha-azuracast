@@ -5,13 +5,17 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 import json
 import re
+from unittest.mock import PropertyMock, patch
 from urllib.parse import parse_qs, urlsplit
 
 import aiohttp
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import pytest
-from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
+from pytest_homeassistant_custom_component.test_util.aiohttp import (
+    AiohttpClientMocker,
+    AiohttpClientMockResponse,
+)
 
 from custom_components.azuracast.api.errors import AzuraCastConnectionError, AzuraCastNotFoundError
 from custom_components.azuracast.api.sse import (
@@ -52,6 +56,10 @@ def test_build_sse_url() -> None:
     }
 
 
+def test_build_sse_url_strips_trailing_slash() -> None:
+    assert build_sse_url(f"{BASE_URL}/", ["a"]).startswith(f"{BASE_URL}/api/live/")
+
+
 def test_parse_connect_with_publications() -> None:
     rows = parse_sse_message(connect_message(nowplaying_raw(0), nowplaying_raw(1)))
     assert [r["station"]["shortcode"] for r in rows] == ["ambientes", "party_time"]
@@ -69,6 +77,22 @@ def test_parse_pub() -> None:
 @pytest.mark.parametrize("raw", ["{}", '{"time": 1}', "not json", "[]", '{"pub": {"data": {}}}'])
 def test_parse_ignores_other_messages(raw: str) -> None:
     assert parse_sse_message(raw) == []
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        {"connect": {"subs": {"station:a": "x"}}},
+        {"connect": [1]},
+        {"connect": "s"},
+        {"connect": {"subs": [1]}},
+        {"connect": {"data": 5}},
+        {"connect": {"subs": {"station:a": {"publications": "x"}}}},
+        {"pub": "x"},
+    ],
+)
+def test_parse_ignores_wrong_shapes(message: dict) -> None:
+    assert parse_sse_message(json.dumps(message)) == []
 
 
 async def _lines(*chunks: str) -> AsyncIterator[bytes]:
@@ -116,3 +140,44 @@ async def test_stream_connection_error(
     with pytest.raises(AzuraCastConnectionError):
         async for _ in stream_nowplaying(async_get_clientsession(hass), BASE_URL, ["ambientes"]):
             pass
+
+
+async def test_stream_skips_wrong_shaped_payload(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    bad = nowplaying_raw(0)
+    bad["listeners"] = [1]
+    body = f"data: {pub_message(bad)}\n\ndata: {pub_message(nowplaying_raw(1))}\n\n"
+    aioclient_mock.get(SSE_RE, text=body)
+    items = [np async for np in stream_nowplaying(async_get_clientsession(hass), BASE_URL, ["a"])]
+    assert [np.station.shortcode for np in items] == ["party_time"]
+
+
+async def test_stream_line_too_long(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    aioclient_mock.get(SSE_RE, text=f"data: {'x' * 300_000}\n\n")
+    with pytest.raises(AzuraCastConnectionError):
+        async for _ in stream_nowplaying(async_get_clientsession(hass), BASE_URL, ["ambientes"]):
+            pass
+
+
+async def test_stream_read_timeout(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    async def timing_out() -> AsyncIterator[bytes]:
+        yield f"data: {pub_message(nowplaying_raw(0))}\n".encode()
+        yield b"\n"
+        raise TimeoutError
+
+    aioclient_mock.get(SSE_RE, text="")
+    session = async_get_clientsession(hass)
+    items = []
+    with (
+        patch.object(AiohttpClientMockResponse, "content", new_callable=PropertyMock) as content,
+        pytest.raises(AzuraCastConnectionError),
+    ):
+        content.return_value = timing_out()
+        async for np in stream_nowplaying(session, BASE_URL, ["ambientes"]):
+            items.append(np)
+    assert [np.station.shortcode for np in items] == ["ambientes"]
