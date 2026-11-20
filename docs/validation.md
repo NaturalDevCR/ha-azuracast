@@ -6,8 +6,11 @@ Date:
 Run:
 
 ```bash
-AZURACAST_URL=... AZURACAST_API_KEY=... AZURACAST_STATION_ID=... AZURACAST_PROBE_PLAYLIST_ID=... python tools/probe.py
+AZURACAST_URL=... AZURACAST_API_KEY=... AZURACAST_STATION_ID=... AZURACAST_PROBE_PLAYLIST_ID=... \
+  uv run --no-project --python 3.14 --with aiohttp python tools/probe.py
 ```
+
+Use a TEST playlist for `AZURACAST_PROBE_PLAYLIST_ID`: the script flips it and restores only `is_enabled`.
 
 Paste the printed summary here:
 
