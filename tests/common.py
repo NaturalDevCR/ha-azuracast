@@ -58,3 +58,19 @@ def playlists() -> list[Playlist]:
 
 def queue() -> list[QueueItem]:
     return [QueueItem.from_dict(row) for row in load_fixture("queue_1.json")]
+
+
+def conflict_playlists() -> list[Playlist]:
+    return [
+        Playlist.from_dict(
+            {
+                "id": 20,
+                "name": "both",
+                "description": "ha:ambiente=chill ha:ambiente=lounge",
+                "is_enabled": True,
+            }
+        ),
+        Playlist.from_dict(
+            {"id": 21, "name": "ok", "description": "ha:ambiente=chill", "is_enabled": True}
+        ),
+    ]
