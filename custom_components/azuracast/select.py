@@ -69,7 +69,9 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
         self.selector_key = key
         self._attr_translation_placeholders = {"selector": key}
         self._pending: str | None = None
+        self._pending_song_id: str | None = None
         self._cancel_pending: CALLBACK_TYPE | None = None
+        self._removed = False
 
     @property
     def _selector(self) -> Selector | None:
@@ -114,6 +116,10 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
         self.async_on_remove(self._runtime.nowplaying.async_add_listener(self._handle_nowplaying))
         self.async_on_remove(self._clear_pending_timer)
 
+    async def async_will_remove_from_hass(self) -> None:
+        self._removed = True
+        await super().async_will_remove_from_hass()
+
     async def async_select_option(self, option: str) -> None:
         selector = self._selector
         if selector is None or option not in selector.members:
@@ -132,12 +138,17 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
             )
         previous = selector_state(selector).value
         plan = plan_apply(selector, option)
-        if plan.is_empty and previous == option:
+        # Re-selecting the current value only repairs it: enabling all of its
+        # playlists lets it carry into the next time block. It never clears the
+        # queue, so pressing the same button twice cannot flush the music.
+        repair = previous == option
+        if repair and plan.is_empty:
             return
-        clear_queue = self._runtime.clear_queue_on_change
+        clear_queue = not repair and self._runtime.clear_queue_on_change
         try:
             await execute_plan(self.client, self.station.id, plan, clear_queue=clear_queue)
         except AzuraCastError as err:
+            self._reset_pending()
             await self.coordinator.async_refresh()
             raise HomeAssistantError(
                 translation_domain=DOMAIN,
@@ -148,6 +159,9 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
                     "error": str(err),
                 },
             ) from err
+        if repair:
+            await self.coordinator.async_refresh()
+            return
         self._set_pending(option)
         self.hass.bus.async_fire(
             EVENT_SELECTOR_APPLIED,
@@ -163,10 +177,24 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
 
     @callback
     def _set_pending(self, value: str) -> None:
+        if self._removed:
+            return
         self._clear_pending_timer()
+        np = self._runtime.nowplaying.data
         self._pending = value
+        self._pending_song_id = np.current.song.id if np and np.current else None
         self._cancel_pending = async_call_later(self.hass, PENDING_TIMEOUT, self._pending_expired)
         self.async_write_ha_state()
+
+    @callback
+    def _reset_pending(self) -> None:
+        self._clear_pending_timer()
+        if self._pending is None:
+            return
+        self._pending = None
+        self._pending_song_id = None
+        if not self._removed:
+            self.async_write_ha_state()
 
     @callback
     def _clear_pending_timer(self) -> None:
@@ -184,8 +212,7 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
             self._pending,
             PENDING_TIMEOUT,
         )
-        self._pending = None
-        self.async_write_ha_state()
+        self._reset_pending()
 
     @callback
     def _handle_nowplaying(self) -> None:
@@ -193,7 +220,7 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
         selector = self._selector
         if self._pending is None or np is None or np.current is None or selector is None:
             return
+        if np.current.song.id == self._pending_song_id:
+            return
         if np.current.playlist in selector.playlist_names(self._pending):
-            self._clear_pending_timer()
-            self._pending = None
-            self.async_write_ha_state()
+            self._reset_pending()
