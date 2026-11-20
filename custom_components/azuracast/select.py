@@ -127,6 +127,19 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
         self._pending_song_id = None
 
     async def async_select_option(self, option: str) -> None:
+        # Plan from fresh playlist state: changes made in the AzuraCast UI since
+        # the last poll would otherwise be planned against, or missed.
+        await self.coordinator.async_refresh()
+        if not self.coordinator.last_update_success:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="selector_apply_failed",
+                translation_placeholders={
+                    "selector": self.selector_key,
+                    "value": option,
+                    "error": str(self.coordinator.last_exception),
+                },
+            )
         selector = self._selector
         if selector is None or option not in selector.members:
             raise ServiceValidationError(

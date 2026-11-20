@@ -388,3 +388,35 @@ async def test_select_without_broadcast_keeps_queue(
     ]
     mock_client.clear_queue.assert_not_called()
     assert events[0].data["cleared_queue"] is False
+
+
+async def test_select_plans_from_fresh_playlists(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    """Lounge was switched on in the AzuraCast UI since the last poll; chill must still apply."""
+    events = async_capture_events(hass, EVENT_SELECTOR_APPLIED)
+    assert hass.states.get(ENTITY).state == "chill"
+    mock_client.get_playlists.side_effect = None
+    mock_client.get_playlists.return_value = _with_enabled({12, 14})
+    await _select(hass, "chill")
+    assert mock_client.set_playlist_enabled.await_args_list == [
+        call(1, 10, True),
+        call(1, 11, True),
+        call(1, 12, False),
+    ]
+    mock_client.clear_queue.assert_awaited_once_with(1)
+    assert events[0].data["previous_value"] == "lounge"
+
+
+async def test_select_refresh_failure_changes_nothing(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    mock_client.get_playlists.side_effect = AzuraCastResponseError(500, "boom")
+    events = async_capture_events(hass, EVENT_SELECTOR_APPLIED)
+    with pytest.raises(HomeAssistantError) as info:
+        await _select(hass, "lounge")
+    assert info.value.translation_key == "selector_apply_failed"
+    assert "boom" in info.value.translation_placeholders["error"]
+    mock_client.set_playlist_enabled.assert_not_called()
+    mock_client.clear_queue.assert_not_called()
+    assert events == []
