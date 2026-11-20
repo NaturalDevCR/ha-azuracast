@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
+from homeassistant.config_entries import SOURCE_REAUTH
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers.update_coordinator import UpdateFailed
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_capture_events
 
@@ -235,3 +237,72 @@ async def test_manage_coordinator_queue_permission_issue(
     assert not coordinator.last_update_success
     issue_id = f"missing_permissions_{entry.entry_id}_1"
     assert issue_registry.async_get_issue(DOMAIN, issue_id) is not None
+
+
+async def test_runtime_rejected_key_starts_reauth(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: MagicMock,
+    issue_registry: ir.IssueRegistry,
+) -> None:
+    """A 403 on playlists plus a 403 on the account endpoint means the key is gone."""
+    mock_client.get_playlists.side_effect = AzuraCastPermissionError(403, "Forbidden")
+    mock_client.get_account.side_effect = AzuraCastPermissionError(403, "Forbidden")
+    manage = init_integration.runtime_data.stations[1].manage
+    await manage.async_refresh()
+    await hass.async_block_till_done()
+    assert not manage.last_update_success
+    flows = hass.config_entries.flow.async_progress()
+    assert any(
+        f["context"]["source"] == SOURCE_REAUTH
+        and f["context"]["entry_id"] == init_integration.entry_id
+        for f in flows
+    )
+    issue_id = f"missing_permissions_{init_integration.entry_id}_1"
+    assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
+
+
+async def test_runtime_lost_station_permission_raises_issue(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: MagicMock,
+    issue_registry: ir.IssueRegistry,
+) -> None:
+    """A 403 on playlists while the account endpoint still answers 200 is a permission issue."""
+    mock_client.get_playlists.side_effect = AzuraCastPermissionError(403, "Forbidden")
+    manage = init_integration.runtime_data.stations[1].manage
+    await manage.async_refresh()
+    await hass.async_block_till_done()
+    assert not manage.last_update_success
+    assert isinstance(manage.last_exception, UpdateFailed)
+    assert manage.last_exception.translation_key == "missing_permissions"
+    issue_id = f"missing_permissions_{init_integration.entry_id}_1"
+    assert issue_registry.async_get_issue(DOMAIN, issue_id) is not None
+    assert not [
+        f
+        for f in hass.config_entries.flow.async_progress()
+        if f["context"]["source"] == SOURCE_REAUTH
+    ]
+
+
+async def test_runtime_account_check_unreachable(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: MagicMock,
+    issue_registry: ir.IssueRegistry,
+) -> None:
+    mock_client.get_playlists.side_effect = AzuraCastPermissionError(403, "Forbidden")
+    mock_client.get_account.side_effect = AzuraCastConnectionError("down")
+    manage = init_integration.runtime_data.stations[1].manage
+    await manage.async_refresh()
+    await hass.async_block_till_done()
+    assert not manage.last_update_success
+    assert isinstance(manage.last_exception, UpdateFailed)
+    assert manage.last_exception.translation_key == "update_failed"
+    issue_id = f"missing_permissions_{init_integration.entry_id}_1"
+    assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
+    assert not [
+        f
+        for f in hass.config_entries.flow.async_progress()
+        if f["context"]["source"] == SOURCE_REAUTH
+    ]

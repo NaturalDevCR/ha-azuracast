@@ -46,7 +46,7 @@ Copy `custom_components/azuracast` into your Home Assistant `config/custom_compo
 
 **Use a dedicated AzuraCast user for Home Assistant.** AzuraCast API keys carry every permission of the user that created them. Give that user rights only on the stations Home Assistant should manage.
 
-The URL, the API key and the SSL setting can be changed later with **Reconfigure**. If AzuraCast stops accepting the key, Home Assistant asks for a new one.
+The URL, the API key and the SSL setting can be changed later with **Reconfigure**. If AzuraCast stops accepting the key (for example, it was deleted), Home Assistant asks for a new one. AzuraCast answers a rejected key with "403 Forbidden", the same as a missing permission, so the integration checks the key against the current-account endpoint to tell the two apart: a key that still works but lost its permissions on a station raises a repair issue instead.
 
 ### Options
 

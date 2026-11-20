@@ -61,10 +61,9 @@ class ManageCoordinator(DataUpdateCoordinator[ManageData]):
             playlists = await self.client.get_playlists(self.station.id)
             queue = await self.client.get_queue(self.station.id)
         except AzuraCastAuthError as err:
-            raise ConfigEntryAuthFailed(
-                translation_domain=DOMAIN, translation_key="auth_failed"
-            ) from err
+            raise _auth_failed() from err
         except AzuraCastPermissionError as err:
+            await self._async_check_api_key()
             set_missing_permissions(self.hass, self.config_entry, self.station, True)
             raise UpdateFailed(
                 translation_domain=DOMAIN,
@@ -72,11 +71,7 @@ class ManageCoordinator(DataUpdateCoordinator[ManageData]):
                 translation_placeholders={"station": self.station.name},
             ) from err
         except AzuraCastError as err:
-            raise UpdateFailed(
-                translation_domain=DOMAIN,
-                translation_key="update_failed",
-                translation_placeholders={"error": str(err)},
-            ) from err
+            raise _update_failed(err) from err
         set_missing_permissions(self.hass, self.config_entry, self.station, False)
         selectors = build_selectors(playlists)
         set_conflicting_tags(
@@ -86,6 +81,31 @@ class ManageCoordinator(DataUpdateCoordinator[ManageData]):
             [playlist for selector in selectors.values() for playlist in selector.conflicts],
         )
         return ManageData(playlists=tuple(playlists), queue=tuple(queue), selectors=selectors)
+
+    async def _async_check_api_key(self) -> None:
+        """Tell a rejected key (reauth) from a key that lacks a station permission.
+
+        AzuraCast answers 403 both when the key lacks a permission and when it
+        no longer accepts the key (the request then runs as anonymous).
+        """
+        try:
+            await self.client.get_account()
+        except (AzuraCastAuthError, AzuraCastPermissionError) as err:
+            raise _auth_failed() from err
+        except AzuraCastError as err:
+            raise _update_failed(err) from err
+
+
+def _auth_failed() -> ConfigEntryAuthFailed:
+    return ConfigEntryAuthFailed(translation_domain=DOMAIN, translation_key="auth_failed")
+
+
+def _update_failed(err: AzuraCastError) -> UpdateFailed:
+    return UpdateFailed(
+        translation_domain=DOMAIN,
+        translation_key="update_failed",
+        translation_placeholders={"error": str(err)},
+    )
 
 
 def tags_for_playlist(manage: ManageCoordinator | None, name: str | None) -> dict[str, str]:

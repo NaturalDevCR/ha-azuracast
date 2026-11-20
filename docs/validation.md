@@ -21,7 +21,7 @@ Paste the printed summary here:
 
 1. Partial `PUT {"is_enabled": x}` works without other fields changing: yes / no
 2. SSE URL and message shape match `api/sse.py` (`connect.subs[*].publications[*].data.np` and `pub.data.np`): yes / no
-3. `GET /api/frontend/account/me` validates the key (200 with a key, 401 with a bad one): yes / no
+3. `GET /api/frontend/account/me` validates the key (200 with a valid key, 403 with a bad or revoked one, since AzuraCast then treats the request as anonymous): yes / no
 4. `schedule_items` fields are `start_time`, `end_time` (HHMM ints), `days` (ISO weekdays), `start_date`, `end_date`: yes / no
 5. Two enabled scheduled playlists that overlap in time: mix by weight / one wins (which?)
 6. After clearing the queue, the next track comes from the newly enabled set: yes / no. How many seconds before a track ends does the next one get fetched?

@@ -70,6 +70,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: AzuraCastConfigEntry) ->
             translation_placeholders={"error": str(err)},
         ) from err
 
+    if client.has_api_key:
+        await _async_check_api_key(client)
+
     options = entry.options
     excluded = set(options.get(CONF_EXCLUDED_STATIONS, []))
     keep_queue = set(options.get(CONF_KEEP_QUEUE_STATIONS, []))
@@ -135,6 +138,27 @@ def _clear_station_issues(
     """Drop issues only a ManageCoordinator maintains, for a station without one."""
     set_missing_permissions(hass, entry, station, False)
     set_conflicting_tags(hass, entry, station, [])
+
+
+async def _async_check_api_key(client: AzuraCastClient) -> None:
+    """Fail setup with reauth when AzuraCast no longer accepts the key.
+
+    AzuraCast treats an unknown or revoked key as an anonymous user, so it
+    answers 403 (not 401) on protected endpoints. The account endpoint tells a
+    rejected key apart from a key that only lacks permission on a station.
+    """
+    try:
+        await client.get_account()
+    except (AzuraCastAuthError, AzuraCastPermissionError) as err:
+        raise ConfigEntryAuthFailed(
+            translation_domain=DOMAIN, translation_key="auth_failed"
+        ) from err
+    except AzuraCastError as err:
+        raise ConfigEntryNotReady(
+            translation_domain=DOMAIN,
+            translation_key="cannot_connect",
+            translation_placeholders={"error": str(err)},
+        ) from err
 
 
 async def _async_manage_coordinator(

@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+from homeassistant.components.button import DOMAIN as BUTTON_DOMAIN
+from homeassistant.components.select import DOMAIN as SELECT_DOMAIN
+from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN
 from homeassistant.config_entries import SOURCE_REAUTH, ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -14,6 +18,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.azuracast.api.errors import (
     AzuraCastAuthError,
     AzuraCastConnectionError,
+    AzuraCastPermissionError,
 )
 from custom_components.azuracast.const import (
     CONF_ALLOW_UNAVAILABLE_STATIONS,
@@ -146,25 +151,51 @@ async def test_excluded_station_device_removed(
     await hass.async_block_till_done()
 
 
+async def test_playlist_probe_connection_error(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    mock_client.get_playlists.side_effect = AzuraCastConnectionError("down")
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+    assert mock_config_entry.state is ConfigEntryState.SETUP_RETRY
+
+
 @pytest.mark.parametrize(
     ("error", "state"),
     [
+        (AzuraCastPermissionError(403, "Forbidden"), ConfigEntryState.SETUP_ERROR),
         (AzuraCastAuthError(401, "Unauthorized"), ConfigEntryState.SETUP_ERROR),
         (AzuraCastConnectionError("down"), ConfigEntryState.SETUP_RETRY),
     ],
 )
-async def test_playlist_probe_errors(
+async def test_account_check_errors(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,
     mock_client: MagicMock,
     error: Exception,
     state: ConfigEntryState,
 ) -> None:
-    mock_client.get_playlists.side_effect = error
+    """The key is checked against the account endpoint before any station probe."""
+    mock_client.get_account.side_effect = error
     mock_config_entry.add_to_hass(hass)
     await hass.config_entries.async_setup(mock_config_entry.entry_id)
     await hass.async_block_till_done()
     assert mock_config_entry.state is state
+    mock_client.get_playlists.assert_not_called()
+
+
+async def test_no_api_key_skips_account_check(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    mock_client.has_api_key = False
+    mock_client.get_account.side_effect = AzuraCastPermissionError(403, "Forbidden")
+    mock_config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+    mock_client.get_account.assert_not_called()
+    assert await hass.config_entries.async_unload(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
 
 
 def _seed_station_issues(hass: HomeAssistant, entry_id: str, station_id: int) -> list[str]:
@@ -245,13 +276,35 @@ async def test_remove_entry_deletes_its_issues(
         assert issue_registry.async_get_issue(DOMAIN, issue_id) is not None
 
 
-async def test_setup_auth_error_starts_reauth(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry, mock_client: MagicMock
+async def test_rejected_key_at_setup_starts_reauth(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: MagicMock,
+    entity_registry: er.EntityRegistry,
 ) -> None:
-    mock_client.get_stations.side_effect = AzuraCastAuthError(401, "")
+    """AzuraCast treats a revoked key as anonymous: the account endpoint answers 403."""
+    mock_client.get_account.side_effect = AzuraCastPermissionError(403, "Forbidden")
+    # Public endpoints keep working and every station probe is 403 for an anonymous user.
+    mock_client.get_playlists.side_effect = AzuraCastPermissionError(403, "Forbidden")
     mock_config_entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    entry_id = mock_config_entry.entry_id
+    managed = [
+        entity_registry.async_get_or_create(
+            platform, DOMAIN, unique_id, config_entry=mock_config_entry
+        ).entity_id
+        for platform, unique_id in (
+            (SWITCH_DOMAIN, f"{entry_id}_1_playlist_10"),
+            (SELECT_DOMAIN, f"{entry_id}_1_selector_ambiente"),
+            (BUTTON_DOMAIN, f"{entry_id}_1_skip_song"),
+        )
+    ]
+    await hass.config_entries.async_setup(entry_id)
     await hass.async_block_till_done()
     assert mock_config_entry.state is ConfigEntryState.SETUP_ERROR
     flows = hass.config_entries.flow.async_progress()
-    assert any(f["context"]["source"] == SOURCE_REAUTH for f in flows)
+    assert any(
+        f["context"]["source"] == SOURCE_REAUTH and f["context"]["entry_id"] == entry_id
+        for f in flows
+    )
+    for entity_id in managed:
+        assert entity_registry.async_get(entity_id) is not None
