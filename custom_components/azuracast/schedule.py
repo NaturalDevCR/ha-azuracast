@@ -7,13 +7,23 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .api.models import Playlist, ScheduleItem
 
+# AzuraCast treats start == end as "play once": it may play within 15 minutes of start.
+PLAY_ONCE_MINUTES = 15
+
+
+def _minutes(hhmm: int) -> int:
+    return hhmm // 100 * 60 + hhmm % 100
+
 
 def schedule_item_active(item: ScheduleItem, moment: datetime) -> bool:
     """Return whether a schedule window covers the moment (station local time)."""
     now = moment.hour * 100 + moment.minute
     start, end = item.start_time, item.end_time
     if start == end:
-        day = moment.date()
+        since_start = (_minutes(now) - _minutes(start)) % (24 * 60)
+        if since_start >= PLAY_ONCE_MINUTES:
+            return False
+        day = (moment - timedelta(minutes=since_start)).date()
     elif start < end:
         if not start <= now < end:
             return False
@@ -44,6 +54,6 @@ def station_time(timezone: str | None, utc_now: datetime, fallback: tzinfo) -> d
     if timezone:
         try:
             zone = ZoneInfo(timezone)
-        except ZoneInfoNotFoundError, ValueError:
+        except ZoneInfoNotFoundError, ValueError, OSError:
             zone = fallback
     return utc_now.astimezone(zone)
