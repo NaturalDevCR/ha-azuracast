@@ -68,7 +68,8 @@
     },
     "abort": {
       "not_loaded": "Load the integration before changing its options.",
-      "cannot_connect": "Could not reach AzuraCast to list the stations."
+      "cannot_connect": "Could not reach AzuraCast to list the stations.",
+      "unknown": "Unexpected error."
     }
   },
   "entity": {

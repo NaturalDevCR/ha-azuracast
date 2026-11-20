@@ -182,6 +182,9 @@ class AzuraCastOptionsFlow(OptionsFlowWithReload):
             stations = await entry.runtime_data.client.get_stations()
         except AzuraCastError:
             return self.async_abort(reason="cannot_connect")
+        except Exception:
+            LOGGER.exception("Unexpected error listing AzuraCast stations")
+            return self.async_abort(reason="unknown")
 
         station_selector = SelectSelector(
             SelectSelectorConfig(
@@ -191,17 +194,23 @@ class AzuraCastOptionsFlow(OptionsFlowWithReload):
             )
         )
         options = entry.options
+        known = {str(s.id) for s in stations}
+
+        def _known(key: str) -> list[str]:
+            # Drop ids of stations that no longer exist so the form still validates.
+            return [sid for sid in options.get(key, []) if sid in known]
+
         schema = probatio.Schema(
             {
                 probatio.Optional(
-                    CONF_EXCLUDED_STATIONS, default=options.get(CONF_EXCLUDED_STATIONS, [])
+                    CONF_EXCLUDED_STATIONS, default=_known(CONF_EXCLUDED_STATIONS)
                 ): station_selector,
                 probatio.Optional(
-                    CONF_KEEP_QUEUE_STATIONS, default=options.get(CONF_KEEP_QUEUE_STATIONS, [])
+                    CONF_KEEP_QUEUE_STATIONS, default=_known(CONF_KEEP_QUEUE_STATIONS)
                 ): station_selector,
                 probatio.Optional(
                     CONF_ALLOW_UNAVAILABLE_STATIONS,
-                    default=options.get(CONF_ALLOW_UNAVAILABLE_STATIONS, []),
+                    default=_known(CONF_ALLOW_UNAVAILABLE_STATIONS),
                 ): station_selector,
                 probatio.Required(
                     CONF_SCAN_INTERVAL,
