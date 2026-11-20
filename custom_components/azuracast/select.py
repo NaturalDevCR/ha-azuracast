@@ -112,13 +112,19 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
         }
 
     async def async_added_to_hass(self) -> None:
+        # HA re-adds this same instance after an entity_id rename.
+        self._removed = False
         await super().async_added_to_hass()
         self.async_on_remove(self._runtime.nowplaying.async_add_listener(self._handle_nowplaying))
-        self.async_on_remove(self._clear_pending_timer)
+        self.async_on_remove(self._drop_pending_on_remove)
 
-    async def async_will_remove_from_hass(self) -> None:
+    @callback
+    def _drop_pending_on_remove(self) -> None:
+        """Drop pending feedback without writing state; a re-add starts clean."""
         self._removed = True
-        await super().async_will_remove_from_hass()
+        self._clear_pending_timer()
+        self._pending = None
+        self._pending_song_id = None
 
     async def async_select_option(self, option: str) -> None:
         selector = self._selector
@@ -128,22 +134,24 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
                 translation_key="unknown_option",
                 translation_placeholders={"option": option, "selector": self.selector_key},
             )
-        if self._runtime.reject_unavailable_values and option not in available_values(
-            selector, self._now()
+        previous = selector_state(selector).value
+        plan = plan_apply(selector, option)
+        # Re-selecting the current value only repairs it: enabling all of its
+        # playlists lets it carry into the next time block. It never clears the
+        # queue and is never rejected, so pressing the same button twice is safe.
+        repair = previous == option
+        if repair and plan.is_empty:
+            return
+        if (
+            not repair
+            and self._runtime.reject_unavailable_values
+            and option not in available_values(selector, self._now())
         ):
             raise ServiceValidationError(
                 translation_domain=DOMAIN,
                 translation_key="value_not_available_now",
                 translation_placeholders={"value": option, "selector": self.selector_key},
             )
-        previous = selector_state(selector).value
-        plan = plan_apply(selector, option)
-        # Re-selecting the current value only repairs it: enabling all of its
-        # playlists lets it carry into the next time block. It never clears the
-        # queue, so pressing the same button twice cannot flush the music.
-        repair = previous == option
-        if repair and plan.is_empty:
-            return
         clear_queue = not repair and self._runtime.clear_queue_on_change
         try:
             await execute_plan(self.client, self.station.id, plan, clear_queue=clear_queue)

@@ -309,3 +309,67 @@ async def test_read_only_station_orphans_removed(
     assert entity_registry.async_get(kept) is not None
     assert await hass.config_entries.async_unload(entry_id)
     await hass.async_block_till_done()
+
+
+async def test_pending_works_after_entity_rename(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    entity_registry: er.EntityRegistry,
+) -> None:
+    """HA re-adds the same instance on rename; pending feedback must survive it."""
+    init_integration.runtime_data.stations[1].reject_unavailable_values = False
+    await _select(hass, "lounge")
+    assert hass.states.get(ENTITY).attributes["pending_value"] == "lounge"
+    entity_registry.async_update_entity(ENTITY, new_entity_id="select.lobby_mood")
+    await hass.async_block_till_done()
+    renamed = hass.states.get("select.lobby_mood")
+    assert renamed is not None
+    assert renamed.attributes["pending_value"] is None
+    await hass.services.async_call(
+        SELECT_DOMAIN,
+        SERVICE_SELECT_OPTION,
+        {ATTR_ENTITY_ID: "select.lobby_mood", ATTR_OPTION: "fiesta"},
+        blocking=True,
+    )
+    assert hass.states.get("select.lobby_mood").attributes["pending_value"] == "fiesta"
+
+
+async def test_same_value_never_rejected_when_unavailable(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: MagicMock,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """08:00 in Costa Rica: nothing tagged is scheduled, chill is still on."""
+    freezer.move_to("2026-11-20 14:00:00+00:00")
+    assert hass.states.get(ENTITY).state == "chill"
+    await _select(hass, "chill")
+    mock_client.set_playlist_enabled.assert_not_called()
+    mock_client.clear_queue.assert_not_called()
+
+
+async def test_same_value_repairs_when_unavailable(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: MagicMock,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    await _set_playlists(hass, init_integration, mock_client, _with_enabled({10, 14}))
+    freezer.move_to("2026-11-20 14:00:00+00:00")
+    await _select(hass, "chill")
+    assert mock_client.set_playlist_enabled.await_args_list == [call(1, 11, True)]
+    mock_client.clear_queue.assert_not_called()
+    assert hass.states.get(ENTITY).attributes["pending_value"] is None
+
+
+async def test_pending_without_song_at_apply_clears_on_first_match(
+    hass: HomeAssistant, init_integration: MockConfigEntry
+) -> None:
+    """With no song known at apply time, any push from the value's playlists clears it."""
+    nowplaying = init_integration.runtime_data.stations[1].nowplaying
+    nowplaying.async_set_updated_data(None)
+    await _select(hass, "lounge")
+    assert hass.states.get(ENTITY).attributes["pending_value"] == "lounge"
+    nowplaying.push(make_nowplaying(0, song_id="a1", playlist="tarde-lounge"))
+    await hass.async_block_till_done()
+    assert hass.states.get(ENTITY).attributes["pending_value"] is None
