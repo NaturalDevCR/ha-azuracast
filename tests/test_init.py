@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from homeassistant.config_entries import ConfigEntryState
+from homeassistant.config_entries import SOURCE_REAUTH, ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import issue_registry as ir
@@ -243,3 +243,15 @@ async def test_remove_entry_deletes_its_issues(
         assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
     for issue_id in other:
         assert issue_registry.async_get_issue(DOMAIN, issue_id) is not None
+
+
+async def test_setup_auth_error_starts_reauth(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    mock_client.get_stations.side_effect = AzuraCastAuthError(401, "")
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+    assert mock_config_entry.state is ConfigEntryState.SETUP_ERROR
+    flows = hass.config_entries.flow.async_progress()
+    assert any(f["context"]["source"] == SOURCE_REAUTH for f in flows)
