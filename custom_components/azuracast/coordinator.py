@@ -117,18 +117,20 @@ class NowPlayingCoordinator(DataUpdateCoordinator[NowPlaying | None]):
         )
         self.station = station
         self._tags_for = tags_for
+        self._last_song_id: str | None = None
 
     async def _async_update_data(self) -> NowPlaying | None:
         return self.data
 
     @callback
     def push(self, nowplaying: NowPlaying) -> None:
-        previous = self.data
         self.async_set_updated_data(nowplaying)
         current = nowplaying.current
-        if previous is None or current is None:
+        if current is None:
             return
-        if previous.current is not None and previous.current.song.id == current.song.id:
+        last_song_id = self._last_song_id
+        self._last_song_id = current.song.id
+        if last_song_id is None or last_song_id == current.song.id:
             return
         self.hass.bus.async_fire(
             EVENT_SONG_CHANGED,

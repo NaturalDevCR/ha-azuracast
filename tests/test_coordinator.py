@@ -16,14 +16,23 @@ from custom_components.azuracast.api.errors import (
     AzuraCastConnectionError,
     AzuraCastPermissionError,
 )
+from custom_components.azuracast.api.models import NowPlaying
 from custom_components.azuracast.const import DOMAIN, EVENT_SONG_CHANGED
 from custom_components.azuracast.coordinator import (
     ManageCoordinator,
     NowPlayingCoordinator,
     tags_for_playlist,
 )
+from custom_components.azuracast.issues import set_sse_unavailable
 
-from .common import conflict_playlists, make_nowplaying, playlists, queue, stations
+from .common import (
+    conflict_playlists,
+    make_nowplaying,
+    nowplaying_raw,
+    playlists,
+    queue,
+    stations,
+)
 
 
 @pytest.fixture
@@ -134,3 +143,95 @@ async def test_nowplaying_push_fires_song_changed_only_on_change(
         "playlist": "tarde-chill",
         "tags": {"ambiente": "chill"},
     }
+
+
+def _no_song() -> NowPlaying:
+    raw = nowplaying_raw(0)
+    raw["now_playing"] = None
+    nowplaying = NowPlaying.from_dict(raw)
+    assert nowplaying.current is None
+    return nowplaying
+
+
+def _nowplaying_coordinator(hass: HomeAssistant, entry: MockConfigEntry) -> NowPlayingCoordinator:
+    return NowPlayingCoordinator(hass, entry, stations()[0], lambda name: {})
+
+
+async def test_nowplaying_same_song_after_gap_does_not_fire(
+    hass: HomeAssistant, entry: MockConfigEntry
+) -> None:
+    events = async_capture_events(hass, EVENT_SONG_CHANGED)
+    coordinator = _nowplaying_coordinator(hass, entry)
+    coordinator.push(make_nowplaying(0))
+    coordinator.push(_no_song())
+    coordinator.push(make_nowplaying(0))
+    await hass.async_block_till_done()
+    assert events == []
+
+
+async def test_nowplaying_new_song_after_gap_fires_once(
+    hass: HomeAssistant, entry: MockConfigEntry
+) -> None:
+    events = async_capture_events(hass, EVENT_SONG_CHANGED)
+    coordinator = _nowplaying_coordinator(hass, entry)
+    coordinator.push(make_nowplaying(0))
+    coordinator.push(_no_song())
+    coordinator.push(make_nowplaying(0, song_id="a2"))
+    await hass.async_block_till_done()
+    assert len(events) == 1
+    assert events[0].data["song"]["id"] == "a2"
+
+
+async def test_nowplaying_first_song_after_empty_load_does_not_fire(
+    hass: HomeAssistant, entry: MockConfigEntry
+) -> None:
+    events = async_capture_events(hass, EVENT_SONG_CHANGED)
+    coordinator = _nowplaying_coordinator(hass, entry)
+    coordinator.push(_no_song())
+    coordinator.push(make_nowplaying(0))
+    await hass.async_block_till_done()
+    assert events == []
+
+
+async def test_sse_unavailable_issue(
+    hass: HomeAssistant, entry: MockConfigEntry, issue_registry: ir.IssueRegistry
+) -> None:
+    issue_id = f"sse_unavailable_{entry.entry_id}"
+    set_sse_unavailable(hass, entry, True)
+    issue = issue_registry.async_get_issue(DOMAIN, issue_id)
+    assert issue is not None
+    assert issue.translation_key == "sse_unavailable"
+    assert issue.translation_placeholders == {"instance": "radio.example.com"}
+
+    set_sse_unavailable(hass, entry, False)
+    assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
+
+
+async def test_conflicting_tags_issue_clears(
+    hass: HomeAssistant, entry: MockConfigEntry, issue_registry: ir.IssueRegistry
+) -> None:
+    client = AsyncMock()
+    client.get_playlists.return_value = conflict_playlists()
+    client.get_queue.return_value = []
+    coordinator = _manage(hass, entry, client)
+    await coordinator.async_refresh()
+    issue_id = f"conflicting_tags_{entry.entry_id}_1"
+    assert issue_registry.async_get_issue(DOMAIN, issue_id) is not None
+
+    client.get_playlists.return_value = playlists()
+    await coordinator.async_refresh()
+    assert coordinator.last_update_success
+    assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
+
+
+async def test_manage_coordinator_queue_permission_issue(
+    hass: HomeAssistant, entry: MockConfigEntry, issue_registry: ir.IssueRegistry
+) -> None:
+    client = AsyncMock()
+    client.get_playlists.return_value = playlists()
+    client.get_queue.side_effect = AzuraCastPermissionError(403, "Forbidden")
+    coordinator = _manage(hass, entry, client)
+    await coordinator.async_refresh()
+    assert not coordinator.last_update_success
+    issue_id = f"missing_permissions_{entry.entry_id}_1"
+    assert issue_registry.async_get_issue(DOMAIN, issue_id) is not None
