@@ -32,6 +32,7 @@ from .const import (
 )
 from .coordinator import ManageCoordinator, NowPlayingCoordinator, tags_for_playlist
 from .hub import NowPlayingHub
+from .issues import async_delete_entry_issues, set_conflicting_tags, set_missing_permissions
 from .runtime import AzuraCastConfigEntry, AzuraCastRuntime, StationRuntime, station_device_key
 from .services import async_setup_services
 
@@ -83,8 +84,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: AzuraCastConfigEntry) ->
     for station in stations:
         key = str(station.id)
         if key in excluded:
+            _clear_station_issues(hass, entry, station)
             continue
         manage = await _async_manage_coordinator(hass, entry, client, station, interval)
+        if manage is None:
+            _clear_station_issues(hass, entry, station)
         runtimes[station.id] = StationRuntime(
             station=station,
             device_key=station_device_key(entry.entry_id, station.id),
@@ -111,6 +115,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: AzuraCastConfigEntry) ->
 async def async_unload_entry(hass: HomeAssistant, entry: AzuraCastConfigEntry) -> bool:
     """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: AzuraCastConfigEntry) -> None:
+    """Delete the repair issues of a removed config entry."""
+    async_delete_entry_issues(hass, entry)
+
+
+def _clear_station_issues(
+    hass: HomeAssistant, entry: AzuraCastConfigEntry, station: Station
+) -> None:
+    """Drop issues only a ManageCoordinator maintains, for a station without one."""
+    set_missing_permissions(hass, entry, station, False)
+    set_conflicting_tags(hass, entry, station, [])
 
 
 async def _async_manage_coordinator(

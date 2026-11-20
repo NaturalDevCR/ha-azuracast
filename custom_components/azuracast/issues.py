@@ -69,3 +69,17 @@ def set_conflicting_tags(
             "playlists": ", ".join(sorted({p.name for p in playlists})),
         },
     )
+
+
+@callback
+def async_delete_entry_issues(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Delete every repair issue raised for a config entry."""
+    suffix = f"_{entry.entry_id}"
+    infix = f"{suffix}_"
+    issue_ids = [
+        issue_id
+        for domain, issue_id in ir.async_get(hass).issues
+        if domain == DOMAIN and (issue_id.endswith(suffix) or infix in issue_id)
+    ]
+    for issue_id in issue_ids:
+        ir.async_delete_issue(hass, DOMAIN, issue_id)
