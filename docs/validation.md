@@ -28,3 +28,4 @@ Paste the printed summary here:
 7. `POST /api/station/{id}/backend/skip` skips with crossfade: yes / no
 8. Station admin page URL pattern (for the device's configuration_url): `/station/{id}/profile` / other
 9. Stations list includes `timezone`: yes / no
+10. On a station without the Media feature or AutoDJ (remote relay, or AutoDJ/backend off), HTTP status of `GET /api/station/{id}/playlists` and `GET /api/station/{id}/queue` (the integration treats any 4xx other than 401 as read-only / no broadcasting): playlists ___ / queue ___

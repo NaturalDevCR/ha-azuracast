@@ -17,6 +17,7 @@ from custom_components.azuracast.api.errors import (
     AzuraCastAuthError,
     AzuraCastConnectionError,
     AzuraCastPermissionError,
+    AzuraCastResponseError,
 )
 from custom_components.azuracast.api.models import NowPlaying
 from custom_components.azuracast.const import DOMAIN, EVENT_SONG_CHANGED
@@ -241,6 +242,21 @@ async def test_manage_coordinator_queue_forbidden_is_not_broadcast(
     assert [p.id for p in coordinator.data.playlists] == [10, 11, 12, 13, 14]
     issue_id = f"missing_permissions_{entry.entry_id}_1"
     assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
+    client.get_account.assert_not_called()
+
+
+async def test_manage_coordinator_queue_client_error_is_not_broadcast(
+    hass: HomeAssistant, entry: MockConfigEntry
+) -> None:
+    """A queue that answers another 4xx (e.g. no AutoDJ) leaves playlists manageable."""
+    client = AsyncMock()
+    client.get_playlists.return_value = playlists()
+    client.get_queue.side_effect = AzuraCastResponseError(400, "Bad Request")
+    coordinator = _manage(hass, entry, client)
+    await coordinator.async_refresh()
+    assert coordinator.last_update_success
+    assert coordinator.data.queue == ()
+    assert coordinator.data.can_broadcast is False
     client.get_account.assert_not_called()
 
 

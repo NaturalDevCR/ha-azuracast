@@ -12,7 +12,12 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api.client import AzuraCastClient
-from .api.errors import AzuraCastAuthError, AzuraCastError, AzuraCastPermissionError
+from .api.errors import (
+    AzuraCastAuthError,
+    AzuraCastError,
+    AzuraCastPermissionError,
+    is_client_error,
+)
 from .api.models import NowPlaying, Playlist, QueueItem, Station
 from .const import DOMAIN, EVENT_SONG_CHANGED, LOGGER
 from .issues import set_conflicting_tags, set_missing_permissions
@@ -73,17 +78,21 @@ class ManageCoordinator(DataUpdateCoordinator[ManageData]):
             ) from err
         except AzuraCastError as err:
             raise _update_failed(err) from err
-        # The queue needs the Broadcasting permission, playlists only Media: a 403
-        # here alone leaves playlists and selectors manageable.
+        # The queue needs the Broadcasting permission (and a station that has a
+        # queue), playlists only Media: a 403 or another 4xx here alone leaves
+        # playlists and selectors manageable.
         can_broadcast = True
         try:
             queue = await self.client.get_queue(self.station.id)
         except AzuraCastAuthError as err:
             raise _auth_failed() from err
-        except AzuraCastPermissionError:
-            queue, can_broadcast = [], False
         except AzuraCastError as err:
-            raise _update_failed(err) from err
+            if not is_client_error(err):
+                raise _update_failed(err) from err
+            LOGGER.debug(
+                "Queue of station %s unavailable (%s); no broadcasting", self.station.name, err
+            )
+            queue, can_broadcast = [], False
         set_missing_permissions(self.hass, self.config_entry, self.station, False)
         selectors = build_selectors(playlists)
         set_conflicting_tags(

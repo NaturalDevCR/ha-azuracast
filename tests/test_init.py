@@ -18,7 +18,9 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.azuracast.api.errors import (
     AzuraCastAuthError,
     AzuraCastConnectionError,
+    AzuraCastNotFoundError,
     AzuraCastPermissionError,
+    AzuraCastResponseError,
 )
 from custom_components.azuracast.const import (
     CONF_ALLOW_UNAVAILABLE_STATIONS,
@@ -27,6 +29,8 @@ from custom_components.azuracast.const import (
     DOMAIN,
 )
 from custom_components.azuracast.issues import async_delete_stale_station_issues
+
+from .common import playlists
 
 
 async def test_setup_and_unload(hass: HomeAssistant, init_integration: MockConfigEntry) -> None:
@@ -156,6 +160,45 @@ async def test_playlist_probe_connection_error(
     hass: HomeAssistant, mock_config_entry: MockConfigEntry, mock_client: MagicMock
 ) -> None:
     mock_client.get_playlists.side_effect = AzuraCastConnectionError("down")
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+    assert mock_config_entry.state is ConfigEntryState.SETUP_RETRY
+
+
+@pytest.mark.parametrize(
+    "error",
+    [AzuraCastResponseError(400, "Bad Request"), AzuraCastNotFoundError(404, "")],
+)
+async def test_playlist_probe_other_client_error_is_read_only(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: MagicMock,
+    error: Exception,
+) -> None:
+    """A station that answers playlists with another 4xx (no Media feature) is read-only."""
+
+    def _probe(station_id: int) -> object:
+        if station_id == 2:
+            raise error
+        return playlists()
+
+    mock_client.get_playlists.side_effect = _probe
+    mock_config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+    assert mock_config_entry.state is ConfigEntryState.LOADED
+    stations = mock_config_entry.runtime_data.stations
+    assert stations[1].manage is not None
+    assert stations[2].manage is None
+    assert await hass.config_entries.async_unload(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_playlist_probe_server_error_retries(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    mock_client.get_playlists.side_effect = AzuraCastResponseError(500, "Internal Server Error")
     mock_config_entry.add_to_hass(hass)
     await hass.config_entries.async_setup(mock_config_entry.entry_id)
     await hass.async_block_till_done()

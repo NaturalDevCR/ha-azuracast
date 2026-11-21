@@ -20,7 +20,12 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
 
 from .api.client import AzuraCastClient
-from .api.errors import AzuraCastAuthError, AzuraCastError, AzuraCastPermissionError
+from .api.errors import (
+    AzuraCastAuthError,
+    AzuraCastError,
+    AzuraCastPermissionError,
+    is_client_error,
+)
 from .api.models import Station
 from .const import (
     CONF_ALLOW_UNAVAILABLE_STATIONS,
@@ -178,14 +183,20 @@ async def _async_manage_coordinator(
         return None
     try:
         await client.get_playlists(station.id)
-    except AzuraCastPermissionError:
-        LOGGER.info("No management permission on station %s; it will be read-only", station.name)
-        return None
     except AzuraCastAuthError as err:
         raise ConfigEntryAuthFailed(
             translation_domain=DOMAIN, translation_key="auth_failed"
         ) from err
     except AzuraCastError as err:
+        # 403 is a missing permission; another 4xx can be a station without the
+        # Media feature. Either way, retrying setup would not help.
+        if is_client_error(err):
+            LOGGER.info(
+                "Station %s cannot be managed (playlists answered %s); it will be read-only",
+                station.name,
+                err.status,
+            )
+            return None
         raise ConfigEntryNotReady(
             translation_domain=DOMAIN,
             translation_key="cannot_connect",
