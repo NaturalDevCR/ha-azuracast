@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+- New option **Change selectors by reloading the station** (per station): when a selector changes, soft-reload the station once AzuraCast has the next song ready. It drops the songs AzuraCast had already loaded, so the new value plays at once after one short cut; listeners stay connected. Only for Icecast and RSAS stations (others skip songs instead) and never while a DJ is live.
+- **Change selectors immediately** is now **Change selectors by skipping songs**. Both immediate modes leave a station alone while it is offline or a DJ is live.
+- `azuracast_selector_applied` events carry `change_mode` (`wait`, `skip` or `reload`) instead of `skipped_current`.
+- Diagnostics show each station's change mode and frontend.
+
 ## 0.2.0
 
 - New option **Change selectors immediately** (per station): when a selector changes, skip the current song and then each song from the previous value that AzuraCast had already handed to its player, as it starts (at most three). A few seconds of each skipped song are heard during the fade.

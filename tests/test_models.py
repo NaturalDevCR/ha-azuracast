@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from datetime import date
 
-from custom_components.azuracast.api.models import NowPlaying, Playlist, ScheduleItem
+import pytest
+
+from custom_components.azuracast.api.models import NowPlaying, Playlist, ScheduleItem, Station
 
 from .common import load_fixture, nowplaying_raw, playlists, queue, stations
 
@@ -16,6 +18,8 @@ def test_station_from_dict() -> None:
     assert first.name == "Ambientes"
     assert first.timezone == "America/Costa_Rica"
     assert first.is_public is True
+    assert first.frontend == "icecast"
+    assert first.supports_soft_reload is True
     assert second.shortcode == "party_time"
 
 
@@ -102,3 +106,14 @@ def test_queue_from_dict() -> None:
     assert items[0].song is not None
     assert items[0].song.title == "Slow Tide"
     assert items[0].playlist == "tarde-chill"
+
+
+@pytest.mark.parametrize(
+    ("frontend", "expected"),
+    [("icecast", True), ("rsas", True), ("shoutcast2", False), ("remote", False), (None, False)],
+)
+def test_station_soft_reload_support(frontend: str | None, expected: bool) -> None:
+    raw = {"id": 1, "shortcode": "x", "name": "X"}
+    if frontend is not None:
+        raw["frontend"] = frontend
+    assert Station.from_dict(raw).supports_soft_reload is expected

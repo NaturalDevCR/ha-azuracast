@@ -136,3 +136,11 @@ class AzuraCastClient:
 
     async def skip_song(self, station_id: int) -> None:
         await self._request("POST", f"/station/{station_id}/backend/skip")
+
+    async def reload_station(self, station_id: int) -> None:
+        """Soft-reload the station: restart its player, keeping listeners connected.
+
+        Only safe when ``Station.supports_soft_reload``; it also disconnects a
+        live DJ.
+        """
+        await self._request("POST", f"/station/{station_id}/reload")

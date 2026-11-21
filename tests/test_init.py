@@ -25,8 +25,11 @@ from custom_components.azuracast.api.errors import (
 from custom_components.azuracast.const import (
     CONF_ALLOW_UNAVAILABLE_STATIONS,
     CONF_EXCLUDED_STATIONS,
+    CONF_IMMEDIATE_CHANGE_STATIONS,
     CONF_KEEP_QUEUE_STATIONS,
+    CONF_RELOAD_CHANGE_STATIONS,
     DOMAIN,
+    ChangeMode,
 )
 from custom_components.azuracast.issues import async_delete_stale_station_issues
 
@@ -71,6 +74,9 @@ async def test_options_shape_runtime(
             CONF_EXCLUDED_STATIONS: ["2"],
             CONF_KEEP_QUEUE_STATIONS: ["1"],
             CONF_ALLOW_UNAVAILABLE_STATIONS: ["1"],
+            # Reloading wins when a station is listed for both.
+            CONF_IMMEDIATE_CHANGE_STATIONS: ["1"],
+            CONF_RELOAD_CHANGE_STATIONS: ["1"],
             "scan_interval": 120,
         },
     )
@@ -80,6 +86,7 @@ async def test_options_shape_runtime(
     assert set(stations) == {1}
     assert stations[1].clear_queue_on_change is False
     assert stations[1].reject_unavailable_values is False
+    assert stations[1].change_mode is ChangeMode.RELOAD
     assert stations[1].manage.update_interval.total_seconds() == 120
     assert await hass.config_entries.async_unload(mock_config_entry.entry_id)
     await hass.async_block_till_done()

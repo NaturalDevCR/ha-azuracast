@@ -8,6 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 
 from .api.client import AzuraCastClient
 from .api.models import Station
+from .const import ChangeMode
 from .coordinator import ManageCoordinator, NowPlayingCoordinator
 from .hub import NowPlayingHub
 
@@ -27,7 +28,7 @@ class StationRuntime:
     manage: ManageCoordinator | None
     clear_queue_on_change: bool
     reject_unavailable_values: bool
-    change_immediately: bool = False
+    change_mode: ChangeMode = ChangeMode.WAIT
 
     @property
     def can_broadcast(self) -> bool:

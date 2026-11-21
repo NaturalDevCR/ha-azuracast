@@ -14,7 +14,7 @@ Brings every station of an [AzuraCast](https://www.azuracast.com/) instance into
 - **Artwork through Home Assistant.** Album art is fetched by Home Assistant and served to your browser through its media proxy, so it works for LAN-only instances and self-signed certificates, and it respects the **Verify SSL certificate** setting.
 - **Playlists as switches**, with their ID, type, order, weight, schedule and tags as attributes.
 - **Skip song** and **clear queue** buttons, plus actions to skip, clear the queue, enable or disable several playlists at once and reshuffle a playlist.
-- **Tag selectors.** Write `ha:<selector>=<value>` in a playlist's description, for example `ha:ambiente=chill`. Each station gets a `select` with every value it finds. Choosing a value enables that value's playlists, disables the others of the same selector and clears the queue. AzuraCast hands its player one or two songs ahead and they cannot be taken back, so by default the change is heard after the current song and those one or two songs, with no cuts. A station can instead change immediately: the current song and the already-loaded ones from the previous value are skipped, with a few seconds of each heard during the crossfade. AzuraCast's own schedules keep deciding which of them plays at each hour.
+- **Tag selectors.** Write `ha:<selector>=<value>` in a playlist's description, for example `ha:ambiente=chill`. Each station gets a `select` with every value it finds. Choosing a value enables that value's playlists, disables the others of the same selector and clears the queue. AzuraCast hands its player one or two songs ahead and they cannot be taken back, so by default the change is heard after the current song and those one or two songs, with no cuts. A station can instead change right away, by skipping songs or by soft-reloading the station (see Options). AzuraCast's own schedules keep deciding which of them plays at each hour.
 - **Events** for automations: `azuracast_song_changed` and `azuracast_selector_applied`.
 - Works **without an API key** (read-only public data) or with one (management). Stations the key cannot manage stay read-only.
 
@@ -59,7 +59,10 @@ The URL, the API key and the SSL setting can be changed later with **Reconfigure
 
 - **Stations to ignore.** They get no device or entities.
 - **Keep the queue when a selector changes.** By default the queue is cleared, so the change happens after the current song and the one or two songs AzuraCast has already loaded. Stations listed here keep their queue.
-- **Change selectors immediately.** Stations listed here skip the current song when a selector changes, and then each already-loaded song from the previous value as it starts (at most three), so the new value starts right away. A few seconds of each skipped song are heard during the crossfade. Needs the queue to be cleared and the Broadcasting permission.
+- **Change selectors by skipping songs.** Stations listed here skip the current song when a selector changes, and then each already-loaded song from the previous value as it starts (at most three). The change is heard right away, but a few seconds of each skipped song are heard during the fade.
+- **Change selectors by reloading the station.** Stations listed here soft-reload (AzuraCast's "Reload Configuration") when a selector changes, once AzuraCast has the next song ready. That drops the songs already loaded: one short cut, then the new value plays at once, and listeners stay connected. Only for Icecast and RSAS stations; any other station skips songs instead, because AzuraCast would restart it and drop its listeners. Takes precedence over skipping.
+
+Both immediate modes need the queue to be cleared and the Broadcasting permission, and leave the station alone while it is offline or a DJ is live (a reload would disconnect the DJ).
 - **Accept selector values with nothing scheduled now.** By default a value is rejected if none of its playlists can play at this moment, so the station never goes silent.
 - **Playlist refresh interval** (30–300 s, default 60).
 
@@ -146,7 +149,7 @@ data:
 ## Events
 
 - `azuracast_song_changed`: `station_id`, `station_shortcode`, `song`, `playlist`, `tags`.
-- `azuracast_selector_applied`: `station_id`, `selector`, `value`, `previous_value`, `cleared_queue`, `skipped_current`. It is not fired when the current value is re-selected.
+- `azuracast_selector_applied`: `station_id`, `selector`, `value`, `previous_value`, `cleared_queue`, `change_mode` (`wait`, `skip` or `reload`: how the change is made heard). It is not fired when the current value is re-selected.
 
 ## How data is updated
 
@@ -156,7 +159,7 @@ Now-playing data is pushed through the stream; polling every 30 s is only a fall
 
 - Stations that are not public appear only if the API key can see them.
 - New stations need a reload of the integration. New playlists and selectors appear on their own.
-- By default a selector change is heard after the current song and the one or two songs AzuraCast has already handed to its player; AzuraCast offers no way to take those back. Changing immediately skips them instead, which is not seamless.
+- By default a selector change is heard after the current song and the one or two songs AzuraCast has already handed to its player; AzuraCast offers no way to take those back. The immediate modes skip them (a few seconds of each are heard) or reload the station (one short cut).
 - Time blocks of the same selector value should not overlap. How AzuraCast picks between overlapping scheduled playlists has not been verified yet.
 - A playlist with two values of the same selector is ignored by that selector, and a repair issue lists it.
 - A renamed playlist keeps its old switch name until the integration is reloaded.

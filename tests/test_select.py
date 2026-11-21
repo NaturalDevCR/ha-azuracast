@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import timedelta
 import logging
@@ -21,16 +23,18 @@ from pytest_homeassistant_custom_component.common import (
     async_fire_time_changed,
 )
 
+from custom_components.azuracast import select as select_module
 from custom_components.azuracast.api.errors import AzuraCastResponseError
-from custom_components.azuracast.api.models import Playlist
+from custom_components.azuracast.api.models import NowPlaying, Playlist
 from custom_components.azuracast.const import (
     DOMAIN,
     EVENT_SELECTOR_APPLIED,
     MAX_STALE_SKIPS,
     PENDING_TIMEOUT,
+    ChangeMode,
 )
 
-from .common import make_nowplaying, playlists
+from .common import make_nowplaying, nowplaying_raw, playlists, queue
 
 ENTITY = "select.ambientes_ambiente"
 TIMEOUT_WARNING = "was applied but no song from it started"
@@ -102,7 +106,7 @@ async def test_select_applies_plan(
         "value": "lounge",
         "previous_value": "chill",
         "cleared_queue": True,
-        "skipped_current": False,
+        "change_mode": "wait",
     }
     assert hass.states.get(ENTITY).attributes["pending_value"] == "lounge"
     mock_client.skip_song.assert_not_called()
@@ -438,7 +442,7 @@ async def _play(hass: HomeAssistant, entry: MockConfigEntry, song_id: str, playl
 
 
 def _immediate(entry: MockConfigEntry) -> None:
-    entry.runtime_data.stations[1].change_immediately = True
+    entry.runtime_data.stations[1].change_mode = ChangeMode.SKIP
 
 
 async def test_default_change_skips_nothing(
@@ -461,7 +465,7 @@ async def test_immediate_change_skips_current_then_stale_songs(
     assert mock_client.mock_calls.index(call.clear_queue(1)) < mock_client.mock_calls.index(
         call.skip_song(1)
     )
-    assert events[0].data["skipped_current"] is True
+    assert events[0].data["change_mode"] == "skip"
     # The song playing at apply time was skipped already; it is not skipped again.
     await _play(hass, init_integration, "a1", "tarde-chill")
     assert mock_client.skip_song.await_count == 1
@@ -519,7 +523,7 @@ async def test_immediate_skip_failure_keeps_selection(
     mock_client.skip_song.side_effect = AzuraCastResponseError(500, "boom")
     events = async_capture_events(hass, EVENT_SELECTOR_APPLIED)
     await _select(hass, "lounge")
-    assert events[0].data["skipped_current"] is False
+    assert events[0].data["change_mode"] == "skip"
     assert hass.states.get(ENTITY).attributes["pending_value"] == "lounge"
 
 
@@ -542,7 +546,7 @@ async def test_immediate_skips_nothing_when_queue_kept(
     await _select(hass, "lounge")
     await _play(hass, init_integration, "old1", "tarde-chill")
     mock_client.skip_song.assert_not_called()
-    assert events[0].data["skipped_current"] is False
+    assert events[0].data["change_mode"] == "wait"
 
 
 async def test_immediate_needs_broadcast(
@@ -553,4 +557,139 @@ async def test_immediate_needs_broadcast(
     await _select(hass, "lounge")
     await _play(hass, init_no_broadcast, "old1", "tarde-chill")
     mock_client.skip_song.assert_not_called()
-    assert events[0].data["skipped_current"] is False
+    assert events[0].data["change_mode"] == "wait"
+
+
+def _reload_mode(entry: MockConfigEntry) -> None:
+    entry.runtime_data.stations[1].change_mode = ChangeMode.RELOAD
+
+
+@pytest.fixture
+def fast_reload(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Time is frozen in these tests, so polls must not wait on the clock.
+    monkeypatch.setattr(select_module, "RELOAD_QUEUE_POLL", 0)
+    monkeypatch.setattr(select_module, "RELOAD_QUEUE_ATTEMPTS", 50)
+
+
+async def _spin(hass: HomeAssistant, until: Callable[[], bool] | None = None) -> None:
+    """Let background tasks run without advancing the frozen clock."""
+    for _ in range(200):
+        if until is not None and until():
+            return
+        await asyncio.sleep(0)
+    await hass.async_block_till_done()
+    if until is not None:
+        assert until()
+
+
+@pytest.mark.usefixtures("fast_reload")
+async def test_reload_mode_reloads_once_next_song_is_ready(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    """Reloading before AzuraCast refills the queue would leave Liquidsoap silent."""
+    _reload_mode(init_integration)
+    mock_client.get_queue.return_value = []
+    events = async_capture_events(hass, EVENT_SELECTOR_APPLIED)
+    await _select(hass, "lounge")
+    assert events[0].data["change_mode"] == "reload"
+    for _ in range(10):
+        await asyncio.sleep(0)
+    mock_client.reload_station.assert_not_called()
+    mock_client.get_queue.return_value = queue()
+    await _spin(hass, lambda: mock_client.reload_station.await_count == 1)
+    mock_client.reload_station.assert_awaited_once_with(1)
+    mock_client.skip_song.assert_not_called()
+    # The reload drops what Liquidsoap held, so nothing is skipped afterwards.
+    await _play(hass, init_integration, "old1", "tarde-chill")
+    mock_client.skip_song.assert_not_called()
+
+
+@pytest.mark.usefixtures("fast_reload")
+async def test_reload_mode_gives_up_without_next_song(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: MagicMock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _reload_mode(init_integration)
+    # Only songs already handed to Liquidsoap: nothing new to play after a reload.
+    mock_client.get_queue.return_value = [i for i in queue() if i.sent_to_autodj]
+    with caplog.at_level(logging.WARNING):
+        await _select(hass, "lounge")
+        await _spin(hass)
+    mock_client.reload_station.assert_not_called()
+    assert "not reloading" in caplog.text
+
+
+@pytest.mark.usefixtures("fast_reload")
+async def test_reload_failure_is_logged(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: MagicMock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _reload_mode(init_integration)
+    mock_client.reload_station.side_effect = AzuraCastResponseError(500, "boom")
+    with caplog.at_level(logging.WARNING):
+        await _select(hass, "lounge")
+        await _spin(hass, lambda: mock_client.reload_station.await_count == 1)
+    assert "Could not reload" in caplog.text
+
+
+@pytest.mark.usefixtures("fast_reload")
+async def test_new_selection_cancels_pending_reload(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    _reload_mode(init_integration)
+    init_integration.runtime_data.stations[1].reject_unavailable_values = False
+    mock_client.get_queue.return_value = []
+    await _select(hass, "lounge")
+    await _select(hass, "fiesta")
+    mock_client.get_queue.return_value = queue()
+    await _spin(hass, lambda: mock_client.reload_station.await_count == 1)
+    await _spin(hass)
+    assert mock_client.reload_station.await_count == 1
+
+
+async def test_reload_mode_skips_when_station_cannot_soft_reload(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    """Without Icecast a reload restarts everything and drops listeners."""
+    _reload_mode(init_integration)
+    runtime = init_integration.runtime_data.stations[1]
+    runtime.station = replace(runtime.station, frontend="shoutcast2")
+    events = async_capture_events(hass, EVENT_SELECTOR_APPLIED)
+    await _select(hass, "lounge")
+    await hass.async_block_till_done()
+    mock_client.reload_station.assert_not_called()
+    mock_client.skip_song.assert_awaited_once_with(1)
+    assert events[0].data["change_mode"] == "skip"
+
+
+@pytest.mark.parametrize("mode", [ChangeMode.SKIP, ChangeMode.RELOAD])
+async def test_immediate_modes_leave_live_dj_alone(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: MagicMock, mode: ChangeMode
+) -> None:
+    """A reload would disconnect the DJ and a skip has nothing of ours to skip."""
+    init_integration.runtime_data.stations[1].change_mode = mode
+    raw = nowplaying_raw(0)
+    raw["live"]["is_live"] = True
+    init_integration.runtime_data.stations[1].nowplaying.push(NowPlaying.from_dict(raw))
+    events = async_capture_events(hass, EVENT_SELECTOR_APPLIED)
+    await _select(hass, "lounge")
+    await hass.async_block_till_done()
+    mock_client.reload_station.assert_not_called()
+    mock_client.skip_song.assert_not_called()
+    assert events[0].data["change_mode"] == "wait"
+
+
+@pytest.mark.parametrize("mode", [ChangeMode.SKIP, ChangeMode.RELOAD])
+async def test_immediate_modes_wait_when_station_offline(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: MagicMock, mode: ChangeMode
+) -> None:
+    init_integration.runtime_data.stations[1].change_mode = mode
+    init_integration.runtime_data.stations[1].nowplaying.push(make_nowplaying(0, is_online=False))
+    await _select(hass, "lounge")
+    await hass.async_block_till_done()
+    mock_client.reload_station.assert_not_called()
+    mock_client.skip_song.assert_not_called()

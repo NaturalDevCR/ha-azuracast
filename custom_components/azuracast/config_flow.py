@@ -37,6 +37,7 @@ from .const import (
     CONF_EXCLUDED_STATIONS,
     CONF_IMMEDIATE_CHANGE_STATIONS,
     CONF_KEEP_QUEUE_STATIONS,
+    CONF_RELOAD_CHANGE_STATIONS,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     LOGGER,
@@ -212,6 +213,10 @@ class AzuraCastOptionsFlow(OptionsFlowWithReload):
                 probatio.Optional(
                     CONF_IMMEDIATE_CHANGE_STATIONS,
                     default=_known(CONF_IMMEDIATE_CHANGE_STATIONS),
+                ): station_selector,
+                probatio.Optional(
+                    CONF_RELOAD_CHANGE_STATIONS,
+                    default=_known(CONF_RELOAD_CHANGE_STATIONS),
                 ): station_selector,
                 probatio.Optional(
                     CONF_ALLOW_UNAVAILABLE_STATIONS,

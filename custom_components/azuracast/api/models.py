@@ -49,6 +49,16 @@ class Station:
     timezone: str | None
     is_public: bool
     public_player_url: str | None
+    frontend: str | None = None
+
+    @property
+    def supports_soft_reload(self) -> bool:
+        """Whether a reload restarts only the player and keeps listeners connected.
+
+        AzuraCast soft-reloads Icecast and RSAS stations; any other frontend gets
+        a full restart that disconnects listeners.
+        """
+        return self.frontend in ("icecast", "rsas")
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Station:
@@ -60,6 +70,7 @@ class Station:
             timezone=_opt_str(data.get("timezone")),
             is_public=bool(data.get("is_public", True)),
             public_player_url=_opt_str(data.get("public_player_url")),
+            frontend=_opt_str(data.get("frontend")),
         )
 
 

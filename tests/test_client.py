@@ -171,3 +171,11 @@ async def test_invalid_json(hass: HomeAssistant, aioclient_mock: AiohttpClientMo
     aioclient_mock.get(f"{API}/stations", text="<html>proxy error</html>")
     with pytest.raises(AzuraCastResponseError):
         await _client(hass).get_stations()
+
+
+async def test_reload_station(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
+    aioclient_mock.post(f"{API}/station/1/reload", json={"success": True})
+    await _client(hass).reload_station(1)
+    assert [(c[0], str(c[1])) for c in aioclient_mock.mock_calls] == [
+        ("POST", f"{API}/station/1/reload"),
+    ]

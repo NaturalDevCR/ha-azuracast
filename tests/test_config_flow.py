@@ -22,7 +22,9 @@ from custom_components.azuracast.const import (
     CONF_EXCLUDED_STATIONS,
     CONF_IMMEDIATE_CHANGE_STATIONS,
     CONF_KEEP_QUEUE_STATIONS,
+    CONF_RELOAD_CHANGE_STATIONS,
     DOMAIN,
+    ChangeMode,
 )
 
 from .common import BASE_URL
@@ -229,6 +231,7 @@ async def test_options_flow(
             CONF_EXCLUDED_STATIONS: ["2"],
             CONF_KEEP_QUEUE_STATIONS: [],
             CONF_IMMEDIATE_CHANGE_STATIONS: ["1"],
+            CONF_RELOAD_CHANGE_STATIONS: [],
             CONF_ALLOW_UNAVAILABLE_STATIONS: [],
             CONF_SCAN_INTERVAL: 120,
         },
@@ -236,7 +239,7 @@ async def test_options_flow(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
     assert init_integration.options[CONF_EXCLUDED_STATIONS] == ["2"]
-    assert init_integration.runtime_data.stations[1].change_immediately is True
+    assert init_integration.runtime_data.stations[1].change_mode is ChangeMode.SKIP
     assert init_integration.options[CONF_SCAN_INTERVAL] == 120
     assert set(init_integration.runtime_data.stations) == {1}
 
@@ -251,6 +254,7 @@ async def test_options_flow_drops_missing_stations(
             CONF_EXCLUDED_STATIONS: ["99"],
             CONF_KEEP_QUEUE_STATIONS: ["1", "99"],
             CONF_IMMEDIATE_CHANGE_STATIONS: ["97"],
+            CONF_RELOAD_CHANGE_STATIONS: ["96", "1"],
             CONF_ALLOW_UNAVAILABLE_STATIONS: ["98"],
             CONF_SCAN_INTERVAL: 60,
         },
@@ -269,6 +273,7 @@ async def test_options_flow_drops_missing_stations(
         CONF_EXCLUDED_STATIONS: [],
         CONF_KEEP_QUEUE_STATIONS: ["1"],
         CONF_IMMEDIATE_CHANGE_STATIONS: [],
+        CONF_RELOAD_CHANGE_STATIONS: ["1"],
         CONF_ALLOW_UNAVAILABLE_STATIONS: [],
         CONF_SCAN_INTERVAL: 60,
     }

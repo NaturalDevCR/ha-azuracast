@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from functools import partial
 from typing import Any
@@ -15,7 +16,16 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.util import dt as dt_util
 
 from .api.errors import AzuraCastError
-from .const import DOMAIN, EVENT_SELECTOR_APPLIED, LOGGER, MAX_STALE_SKIPS, PENDING_TIMEOUT
+from .const import (
+    DOMAIN,
+    EVENT_SELECTOR_APPLIED,
+    LOGGER,
+    MAX_STALE_SKIPS,
+    PENDING_TIMEOUT,
+    RELOAD_QUEUE_ATTEMPTS,
+    RELOAD_QUEUE_POLL,
+    ChangeMode,
+)
 from .coordinator import ManageCoordinator
 from .entity import AzuraCastEntity, remove_dynamic_entities, track_dynamic_entities
 from .runtime import AzuraCastConfigEntry, StationRuntime
@@ -72,11 +82,12 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
         self._pending_song_id: str | None = None
         self._cancel_pending: CALLBACK_TYPE | None = None
         self._removed = False
-        # Immediate changes skip songs from the previous value that Liquidsoap
+        # The skip mode skips songs from the previous value that Liquidsoap
         # already held, as they start (see _handle_nowplaying).
         self._skip_stale = False
         self._stale_skips = 0
         self._last_skipped: tuple[str, int] | None = None
+        self._reload_task: asyncio.Task[None] | None = None
 
     @property
     def _selector(self) -> Selector | None:
@@ -131,6 +142,7 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
         self._pending = None
         self._pending_song_id = None
         self._skip_stale = False
+        self._cancel_reload()
 
     async def async_select_option(self, option: str) -> None:
         # Plan from fresh playlist state: changes made in the AzuraCast UI since
@@ -193,13 +205,12 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
         if repair:
             await self.coordinator.async_refresh()
             return
-        # Liquidsoap already holds one or two songs that clearing the queue
-        # cannot take back. By default they play out (smooth, but the change is
-        # heard a few songs later); an immediate change skips the current song
-        # and then each held song from another value as it starts.
-        immediate = clear_queue and self._runtime.change_immediately
-        self._set_pending(option, skip_stale=immediate)
-        skipped_current = immediate and await self._async_skip("the current song")
+        mode = self._change_mode(clear_queue)
+        self._set_pending(option, skip_stale=mode is ChangeMode.SKIP)
+        if mode is ChangeMode.SKIP:
+            await self._async_skip("the current song")
+        elif mode is ChangeMode.RELOAD:
+            self._start_reload()
         self.hass.bus.async_fire(
             EVENT_SELECTOR_APPLIED,
             {
@@ -208,12 +219,26 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
                 "value": option,
                 "previous_value": previous,
                 "cleared_queue": clear_queue,
-                "skipped_current": skipped_current,
+                "change_mode": mode.value,
             },
         )
         await self.coordinator.async_refresh()
 
-    async def _async_skip(self, what: str) -> bool:
+    def _change_mode(self, clear_queue: bool) -> ChangeMode:
+        """How this change is made heard (see ChangeMode)."""
+        np = self._runtime.nowplaying.data
+        # Keeping the queue keeps old songs on purpose; an offline station has
+        # nothing to cut; a live DJ would be disconnected by a reload, and a
+        # skip has no song of ours to skip.
+        if not clear_queue or np is None or not np.is_online or np.is_live:
+            return ChangeMode.WAIT
+        mode = self._runtime.change_mode
+        if mode is ChangeMode.RELOAD and not self.station.supports_soft_reload:
+            # Without a soft reload AzuraCast restarts everything and listeners drop.
+            return ChangeMode.SKIP
+        return mode
+
+    async def _async_skip(self, what: str) -> None:
         """Skip the playing song; a failure is logged, never raised."""
         try:
             await self.client.skip_song(self.station.id)
@@ -225,8 +250,53 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
                 self.selector_key,
                 err,
             )
-            return False
-        return True
+
+    @callback
+    def _start_reload(self) -> None:
+        self._cancel_reload()
+        self._reload_task = self._entry.async_create_background_task(
+            self.hass,
+            self._async_reload(),
+            name=f"azuracast reload station {self.station.id}",
+        )
+
+    @callback
+    def _cancel_reload(self) -> None:
+        if self._reload_task is not None:
+            self._reload_task.cancel()
+            self._reload_task = None
+
+    async def _async_reload(self) -> None:
+        """Soft-reload once AzuraCast has the next song ready.
+
+        The reload drops the songs Liquidsoap held, and Liquidsoap asks for its
+        next song right away; with the queue still empty after clearing it,
+        it would retry only after ten seconds of silence.
+        """
+        station_id = self.station.id
+        try:
+            for attempt in range(RELOAD_QUEUE_ATTEMPTS):
+                if attempt:
+                    await asyncio.sleep(RELOAD_QUEUE_POLL)
+                queue = await self.client.get_queue(station_id)
+                if any(not item.sent_to_autodj for item in queue):
+                    await self.client.reload_station(station_id)
+                    return
+            LOGGER.warning(
+                "%s: No next song was ready after changing %s; not reloading",
+                self.station.name,
+                self.selector_key,
+            )
+        except AzuraCastError as err:
+            LOGGER.warning(
+                "%s: Could not reload after changing %s: %s",
+                self.station.name,
+                self.selector_key,
+                err,
+            )
+        finally:
+            if self._reload_task is asyncio.current_task():
+                self._reload_task = None
 
     @callback
     def _set_pending(self, value: str, *, skip_stale: bool) -> None:
