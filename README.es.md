@@ -60,10 +60,11 @@ La URL, la API key y la opción de SSL se pueden cambiar después con **Reconfig
 - **Estaciones a ignorar.** No tendrán dispositivo ni entidades.
 - **Mantener la cola al cambiar un selector.** Por defecto se vacía la cola, así que el cambio ocurre después de la canción actual y de las una o dos que AzuraCast ya tiene cargadas. Las estaciones de esta lista conservan su cola.
 - **Cambiar los selectores saltando canciones.** Las estaciones de esta lista saltan la canción actual al cambiar un selector y luego cada canción ya cargada del valor anterior apenas empieza (tres como máximo). El cambio se oye enseguida, pero durante el fade se oyen unos segundos de cada canción saltada.
-- **Cambiar los selectores recargando la estación.** Las estaciones de esta lista hacen una recarga suave ("Reload Configuration" de AzuraCast) al cambiar un selector, en cuanto AzuraCast tiene lista la siguiente canción. Eso descarta las canciones ya cargadas: un corte breve y el nuevo valor suena de inmediato, y los oyentes siguen conectados. Solo para estaciones con Icecast o RSAS; las demás saltan canciones, porque AzuraCast las reiniciaría y desconectaría a los oyentes. Tiene prioridad sobre saltar canciones.
-
-Los dos modos inmediatos requieren vaciar la cola y el permiso de Broadcasting, y no hacen nada mientras la estación está apagada o hay un DJ en vivo (una recarga lo desconectaría).
+- **Cambiar los selectores recargando la estación.** Las estaciones de esta lista hacen una recarga suave ("Reload Configuration" de AzuraCast) al cambiar un selector, en cuanto AzuraCast tiene lista la siguiente canción. Eso descarta las canciones ya cargadas: un corte breve y el nuevo valor suena de inmediato, y los oyentes siguen conectados. Solo para estaciones con Icecast o RSAS; las demás saltan canciones, porque AzuraCast las reiniciaría y desconectaría a los oyentes. Tiene prioridad sobre las otras dos.
+- **Cambiar los selectores recargando la estación tras la canción.** Igual que la recarga anterior, pero la canción actual termina primero: la estación se recarga dos segundos antes de que acabe y el nuevo valor empieza con la siguiente canción. Si antes empieza una canción del valor anterior (por ejemplo, porque se saltó la actual), la recarga ocurre enseguida; si antes empieza una del nuevo valor, no hace falta recargar. Las estaciones que no admiten recarga suave esperan. Tiene prioridad sobre saltar canciones.
 - **Aceptar valores de selector sin nada programado ahora.** Por defecto se rechaza un valor si ninguna de sus playlists puede sonar en este momento, para que la estación nunca quede en silencio.
+
+Los modos de saltar y de recargar requieren vaciar la cola y el permiso de Broadcasting, y no hacen nada mientras la estación está apagada o hay un DJ en vivo (una recarga lo desconectaría).
 - **Intervalo de actualización de playlists** (30–300 s, 60 por defecto).
 
 Las tres primeras opciones son listas de estaciones: las estaciones que no están en la lista, incluidas las que se agreguen después, tienen el comportamiento por defecto.
@@ -149,7 +150,7 @@ data:
 ## Eventos
 
 - `azuracast_song_changed`: `station_id`, `station_shortcode`, `song`, `playlist`, `tags`.
-- `azuracast_selector_applied`: `station_id`, `selector`, `value`, `previous_value`, `cleared_queue`, `change_mode` (`wait`, `skip` o `reload`: cómo se hace oír el cambio). No se dispara cuando se vuelve a elegir el valor actual.
+- `azuracast_selector_applied`: `station_id`, `selector`, `value`, `previous_value`, `cleared_queue`, `change_mode` (`wait`, `skip`, `reload` o `reload_after_song`: cómo se hace oír el cambio). No se dispara cuando se vuelve a elegir el valor actual.
 
 ## Cómo se actualizan los datos
 
@@ -159,7 +160,7 @@ Los datos de lo que suena llegan por el stream; consultar cada 30 s es solo un r
 
 - Las estaciones que no son públicas aparecen solo si la API key puede verlas.
 - Las estaciones nuevas requieren recargar la integración. Las playlists y los selectores nuevos aparecen solos.
-- Por defecto un cambio de selector se oye después de la canción actual y de las una o dos que AzuraCast ya le entregó a su reproductor; AzuraCast no ofrece forma de retirarlas. Los modos inmediatos las saltan (se oyen unos segundos de cada una) o recargan la estación (un corte breve).
+- Por defecto un cambio de selector se oye después de la canción actual y de las una o dos que AzuraCast ya le entregó a su reproductor; AzuraCast no ofrece forma de retirarlas. Los modos inmediatos las saltan (se oyen unos segundos de cada una) o recargan la estación (un corte breve, enseguida o al terminar la canción actual).
 - Los bloques horarios de un mismo valor de selector no deberían solaparse. Todavía no se ha verificado cómo elige AzuraCast entre playlists programadas que se solapan.
 - Una playlist con dos valores del mismo selector queda fuera de ese selector, y un aviso de reparación la menciona.
 - Una playlist renombrada conserva el nombre anterior de su interruptor hasta que se recarga la integración.

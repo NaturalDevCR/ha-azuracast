@@ -27,6 +27,7 @@ from custom_components.azuracast.const import (
     CONF_EXCLUDED_STATIONS,
     CONF_IMMEDIATE_CHANGE_STATIONS,
     CONF_KEEP_QUEUE_STATIONS,
+    CONF_RELOAD_AFTER_SONG_STATIONS,
     CONF_RELOAD_CHANGE_STATIONS,
     DOMAIN,
     ChangeMode,
@@ -88,6 +89,40 @@ async def test_options_shape_runtime(
     assert stations[1].reject_unavailable_values is False
     assert stations[1].change_mode is ChangeMode.RELOAD
     assert stations[1].manage.update_interval.total_seconds() == 120
+    assert await hass.config_entries.async_unload(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+
+@pytest.mark.parametrize(
+    ("skip", "reload", "after_song", "expected"),
+    [
+        ([], [], [], ChangeMode.WAIT),
+        (["1"], [], [], ChangeMode.SKIP),
+        (["1"], [], ["1"], ChangeMode.RELOAD_AFTER_SONG),
+        (["1"], ["1"], ["1"], ChangeMode.RELOAD),
+    ],
+)
+async def test_change_mode_precedence(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: MagicMock,
+    skip: list[str],
+    reload: list[str],
+    after_song: list[str],
+    expected: ChangeMode,
+) -> None:
+    mock_config_entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(
+        mock_config_entry,
+        options={
+            CONF_IMMEDIATE_CHANGE_STATIONS: skip,
+            CONF_RELOAD_CHANGE_STATIONS: reload,
+            CONF_RELOAD_AFTER_SONG_STATIONS: after_song,
+        },
+    )
+    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+    assert mock_config_entry.runtime_data.stations[1].change_mode is expected
     assert await hass.config_entries.async_unload(mock_config_entry.entry_id)
     await hass.async_block_till_done()
 

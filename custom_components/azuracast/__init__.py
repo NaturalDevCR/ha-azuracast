@@ -32,6 +32,7 @@ from .const import (
     CONF_EXCLUDED_STATIONS,
     CONF_IMMEDIATE_CHANGE_STATIONS,
     CONF_KEEP_QUEUE_STATIONS,
+    CONF_RELOAD_AFTER_SONG_STATIONS,
     CONF_RELOAD_CHANGE_STATIONS,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -92,6 +93,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: AzuraCastConfigEntry) ->
     allow_unavailable = set(options.get(CONF_ALLOW_UNAVAILABLE_STATIONS, []))
     skip_change = set(options.get(CONF_IMMEDIATE_CHANGE_STATIONS, []))
     reload_change = set(options.get(CONF_RELOAD_CHANGE_STATIONS, []))
+    reload_after_song = set(options.get(CONF_RELOAD_AFTER_SONG_STATIONS, []))
     interval = timedelta(seconds=int(options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)))
 
     device_registry = dr.async_get(hass)
@@ -123,7 +125,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: AzuraCastConfigEntry) ->
             manage=manage,
             clear_queue_on_change=key not in keep_queue,
             reject_unavailable_values=key not in allow_unavailable,
-            change_mode=_change_mode(key, skip_change, reload_change),
+            change_mode=_change_mode(key, skip_change, reload_change, reload_after_song),
         )
 
     _remove_stale_devices(device_registry, entry, runtimes)
@@ -225,10 +227,14 @@ def _remove_stale_devices(
             device_registry.async_update_device(device.id, remove_config_entry_id=entry.entry_id)
 
 
-def _change_mode(key: str, skip: set[str], reload: set[str]) -> ChangeMode:
-    """Reloading wins when a station is listed for both."""
+def _change_mode(
+    key: str, skip: set[str], reload: set[str], reload_after_song: set[str]
+) -> ChangeMode:
+    """A station listed more than once takes the first of reload, reload after song, skip."""
     if key in reload:
         return ChangeMode.RELOAD
+    if key in reload_after_song:
+        return ChangeMode.RELOAD_AFTER_SONG
     if key in skip:
         return ChangeMode.SKIP
     return ChangeMode.WAIT

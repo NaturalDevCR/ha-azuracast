@@ -60,10 +60,11 @@ The URL, the API key and the SSL setting can be changed later with **Reconfigure
 - **Stations to ignore.** They get no device or entities.
 - **Keep the queue when a selector changes.** By default the queue is cleared, so the change happens after the current song and the one or two songs AzuraCast has already loaded. Stations listed here keep their queue.
 - **Change selectors by skipping songs.** Stations listed here skip the current song when a selector changes, and then each already-loaded song from the previous value as it starts (at most three). The change is heard right away, but a few seconds of each skipped song are heard during the fade.
-- **Change selectors by reloading the station.** Stations listed here soft-reload (AzuraCast's "Reload Configuration") when a selector changes, once AzuraCast has the next song ready. That drops the songs already loaded: one short cut, then the new value plays at once, and listeners stay connected. Only for Icecast and RSAS stations; any other station skips songs instead, because AzuraCast would restart it and drop its listeners. Takes precedence over skipping.
-
-Both immediate modes need the queue to be cleared and the Broadcasting permission, and leave the station alone while it is offline or a DJ is live (a reload would disconnect the DJ).
+- **Change selectors by reloading the station.** Stations listed here soft-reload (AzuraCast's "Reload Configuration") when a selector changes, once AzuraCast has the next song ready. That drops the songs already loaded: one short cut, then the new value plays at once, and listeners stay connected. Only for Icecast and RSAS stations; any other station skips songs instead, because AzuraCast would restart it and drop its listeners. Takes precedence over the other two.
+- **Change selectors by reloading the station after the song.** Like the reload above, but the current song plays out first: the station reloads two seconds before it ends, and the new value starts with the next song. If a song from the previous value starts first (for example, the current song was skipped), the reload happens right away; if a song from the new value starts first, no reload is needed. Stations that cannot soft-reload wait instead. Takes precedence over skipping.
 - **Accept selector values with nothing scheduled now.** By default a value is rejected if none of its playlists can play at this moment, so the station never goes silent.
+
+The skip and reload modes need the queue to be cleared and the Broadcasting permission, and leave the station alone while it is offline or a DJ is live (a reload would disconnect the DJ).
 - **Playlist refresh interval** (30–300 s, default 60).
 
 The first three options are lists of stations: stations that are not listed, including stations added later, get the default behavior.
@@ -149,7 +150,7 @@ data:
 ## Events
 
 - `azuracast_song_changed`: `station_id`, `station_shortcode`, `song`, `playlist`, `tags`.
-- `azuracast_selector_applied`: `station_id`, `selector`, `value`, `previous_value`, `cleared_queue`, `change_mode` (`wait`, `skip` or `reload`: how the change is made heard). It is not fired when the current value is re-selected.
+- `azuracast_selector_applied`: `station_id`, `selector`, `value`, `previous_value`, `cleared_queue`, `change_mode` (`wait`, `skip`, `reload` or `reload_after_song`: how the change is made heard). It is not fired when the current value is re-selected.
 
 ## How data is updated
 
@@ -159,7 +160,7 @@ Now-playing data is pushed through the stream; polling every 30 s is only a fall
 
 - Stations that are not public appear only if the API key can see them.
 - New stations need a reload of the integration. New playlists and selectors appear on their own.
-- By default a selector change is heard after the current song and the one or two songs AzuraCast has already handed to its player; AzuraCast offers no way to take those back. The immediate modes skip them (a few seconds of each are heard) or reload the station (one short cut).
+- By default a selector change is heard after the current song and the one or two songs AzuraCast has already handed to its player; AzuraCast offers no way to take those back. The immediate modes skip them (a few seconds of each are heard) or reload the station (one short cut, right away or as the current song ends).
 - Time blocks of the same selector value should not overlap. How AzuraCast picks between overlapping scheduled playlists has not been verified yet.
 - A playlist with two values of the same selector is ignored by that selector, and a repair issue lists it.
 - A renamed playlist keeps its old switch name until the integration is reloaded.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0
+
+- New option **Change selectors by reloading the station after the song** (per station): like the reload, but the current song plays out first. The station soft-reloads two seconds before the song ends, so the new value starts with the next song instead of after the songs AzuraCast had already loaded. A song from the previous value starting early (for example, after a skip) triggers the reload at once; a song from the new value starting first cancels it. Stations that cannot soft-reload wait instead.
+- `azuracast_selector_applied` events can carry `change_mode: reload_after_song`.
+
 ## 0.3.0
 
 - New option **Change selectors by reloading the station** (per station): when a selector changes, soft-reload the station once AzuraCast has the next song ready. It drops the songs AzuraCast had already loaded, so the new value plays at once after one short cut; listeners stay connected. Only for Icecast and RSAS stations (others skip songs instead) and never while a DJ is live.

@@ -16,6 +16,7 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.util import dt as dt_util
 
 from .api.errors import AzuraCastError
+from .api.models import NowPlaying
 from .const import (
     DOMAIN,
     EVENT_SELECTOR_APPLIED,
@@ -24,6 +25,7 @@ from .const import (
     PENDING_TIMEOUT,
     RELOAD_QUEUE_ATTEMPTS,
     RELOAD_QUEUE_POLL,
+    RELOAD_SONG_END_LEAD,
     ChangeMode,
 )
 from .coordinator import ManageCoordinator
@@ -33,6 +35,17 @@ from .schedule import station_time
 from .selectors import Selector, available_values, execute_plan, plan_apply, selector_state
 
 PARALLEL_UPDATES = 1
+
+
+def seconds_until_song_end(np: NowPlaying | None, now: float) -> float | None:
+    """Seconds from a POSIX time until the reload before the current song ends.
+
+    None when the song's length is unknown.
+    """
+    if np is None or np.current is None or np.current.duration <= 0:
+        return None
+    end = np.current.played_at + np.current.duration
+    return end - RELOAD_SONG_END_LEAD - now
 
 
 def _unique_id_prefix(runtime: StationRuntime) -> str:
@@ -88,6 +101,8 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
         self._stale_skips = 0
         self._last_skipped: tuple[str, int] | None = None
         self._reload_task: asyncio.Task[None] | None = None
+        # Set when a reload after the song may go ahead (see _async_song_end).
+        self._song_ending: asyncio.Event | None = None
 
     @property
     def _selector(self) -> Selector | None:
@@ -209,8 +224,8 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
         self._set_pending(option, skip_stale=mode is ChangeMode.SKIP)
         if mode is ChangeMode.SKIP:
             await self._async_skip("the current song")
-        elif mode is ChangeMode.RELOAD:
-            self._start_reload()
+        elif mode in (ChangeMode.RELOAD, ChangeMode.RELOAD_AFTER_SONG):
+            self._start_reload(after_song=mode is ChangeMode.RELOAD_AFTER_SONG)
         self.hass.bus.async_fire(
             EVENT_SELECTOR_APPLIED,
             {
@@ -233,9 +248,14 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
         if not clear_queue or np is None or not np.is_online or np.is_live:
             return ChangeMode.WAIT
         mode = self._runtime.change_mode
-        if mode is ChangeMode.RELOAD and not self.station.supports_soft_reload:
-            # Without a soft reload AzuraCast restarts everything and listeners drop.
-            return ChangeMode.SKIP
+        if not self.station.supports_soft_reload:
+            # Without a soft reload AzuraCast restarts everything and listeners
+            # drop: skipping is the next quickest change, waiting the next
+            # way to let the current song finish.
+            if mode is ChangeMode.RELOAD:
+                return ChangeMode.SKIP
+            if mode is ChangeMode.RELOAD_AFTER_SONG:
+                return ChangeMode.WAIT
         return mode
 
     async def _async_skip(self, what: str) -> None:
@@ -252,11 +272,11 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
             )
 
     @callback
-    def _start_reload(self) -> None:
+    def _start_reload(self, *, after_song: bool) -> None:
         self._cancel_reload()
         self._reload_task = self._entry.async_create_background_task(
             self.hass,
-            self._async_reload(),
+            self._async_reload(after_song=after_song),
             name=f"azuracast reload station {self.station.id}",
         )
 
@@ -266,7 +286,7 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
             self._reload_task.cancel()
             self._reload_task = None
 
-    async def _async_reload(self) -> None:
+    async def _async_reload(self, *, after_song: bool) -> None:
         """Soft-reload once AzuraCast has the next song ready.
 
         The reload drops the songs Liquidsoap held, and Liquidsoap asks for its
@@ -275,6 +295,8 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
         """
         station_id = self.station.id
         try:
+            if after_song:
+                await self._async_song_end()
             for attempt in range(RELOAD_QUEUE_ATTEMPTS):
                 if attempt:
                     await asyncio.sleep(RELOAD_QUEUE_POLL)
@@ -298,6 +320,29 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
             if self._reload_task is asyncio.current_task():
                 self._reload_task = None
 
+    async def _async_song_end(self) -> None:
+        """Return shortly before the current song ends, or once another starts.
+
+        A song from the new value starting first resets the pending value,
+        which cancels the reload; a song from the previous value is cut at once.
+        """
+        delay = seconds_until_song_end(self._runtime.nowplaying.data, dt_util.utcnow().timestamp())
+        if delay is not None and delay <= 0:
+            return
+        ending = self._song_ending = asyncio.Event()
+        cancel_timer = (
+            async_call_later(self.hass, delay, callback(lambda _now: ending.set()))
+            if delay is not None
+            else None
+        )
+        try:
+            await ending.wait()
+        finally:
+            if cancel_timer is not None:
+                cancel_timer()
+            if self._song_ending is ending:
+                self._song_ending = None
+
     @callback
     def _set_pending(self, value: str, *, skip_stale: bool) -> None:
         if self._removed:
@@ -314,6 +359,9 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
     @callback
     def _reset_pending(self) -> None:
         self._clear_pending_timer()
+        # A reload still waiting for the song to end is no longer needed.
+        if self._song_ending is not None:
+            self._cancel_reload()
         if self._pending is None:
             return
         self._pending = None
@@ -348,6 +396,8 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
             return
         if np.current.song.id == self._pending_song_id:
             return
+        if self._song_ending is not None:
+            self._song_ending.set()
         if np.current.playlist in selector.playlist_names(self._pending):
             self._reset_pending()
             return

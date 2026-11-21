@@ -666,7 +666,7 @@ async def test_reload_mode_skips_when_station_cannot_soft_reload(
     assert events[0].data["change_mode"] == "skip"
 
 
-@pytest.mark.parametrize("mode", [ChangeMode.SKIP, ChangeMode.RELOAD])
+@pytest.mark.parametrize("mode", [ChangeMode.SKIP, ChangeMode.RELOAD, ChangeMode.RELOAD_AFTER_SONG])
 async def test_immediate_modes_leave_live_dj_alone(
     hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: MagicMock, mode: ChangeMode
 ) -> None:
@@ -683,7 +683,7 @@ async def test_immediate_modes_leave_live_dj_alone(
     assert events[0].data["change_mode"] == "wait"
 
 
-@pytest.mark.parametrize("mode", [ChangeMode.SKIP, ChangeMode.RELOAD])
+@pytest.mark.parametrize("mode", [ChangeMode.SKIP, ChangeMode.RELOAD, ChangeMode.RELOAD_AFTER_SONG])
 async def test_immediate_modes_wait_when_station_offline(
     hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: MagicMock, mode: ChangeMode
 ) -> None:
@@ -693,3 +693,114 @@ async def test_immediate_modes_wait_when_station_offline(
     await hass.async_block_till_done()
     mock_client.reload_station.assert_not_called()
     mock_client.skip_song.assert_not_called()
+
+
+def _reload_after_song_mode(entry: MockConfigEntry) -> None:
+    entry.runtime_data.stations[1].change_mode = ChangeMode.RELOAD_AFTER_SONG
+
+
+@pytest.mark.usefixtures("fast_reload")
+async def test_reload_after_song_waits_for_song_end(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: MagicMock,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """The current song (240 s, started now) plays out before the reload."""
+    _reload_after_song_mode(init_integration)
+    events = async_capture_events(hass, EVENT_SELECTOR_APPLIED)
+    await _select(hass, "lounge")
+    assert events[0].data["change_mode"] == "reload_after_song"
+    await _spin(hass)
+    mock_client.reload_station.assert_not_called()
+    mock_client.skip_song.assert_not_called()
+    freezer.tick(timedelta(seconds=240 - select_module.RELOAD_SONG_END_LEAD - 5))
+    async_fire_time_changed(hass)
+    await _spin(hass)
+    mock_client.reload_station.assert_not_called()
+    freezer.tick(timedelta(seconds=5))
+    async_fire_time_changed(hass)
+    await _spin(hass, lambda: mock_client.reload_station.await_count == 1)
+    mock_client.reload_station.assert_awaited_once_with(1)
+    mock_client.skip_song.assert_not_called()
+
+
+@pytest.mark.usefixtures("fast_reload")
+async def test_reload_after_song_reloads_when_stale_song_starts(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    """A song from the previous value starting early cuts in right away."""
+    _reload_after_song_mode(init_integration)
+    await _select(hass, "lounge")
+    await _spin(hass)
+    mock_client.reload_station.assert_not_called()
+    await _play(hass, init_integration, "old1", "tarde-chill")
+    await _spin(hass, lambda: mock_client.reload_station.await_count == 1)
+    mock_client.reload_station.assert_awaited_once_with(1)
+
+
+@pytest.mark.usefixtures("fast_reload")
+async def test_reload_after_song_not_needed_when_new_value_starts(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: MagicMock,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    _reload_after_song_mode(init_integration)
+    await _select(hass, "lounge")
+    await _play(hass, init_integration, "new1", "tarde-lounge")
+    assert hass.states.get(ENTITY).attributes["pending_value"] is None
+    freezer.tick(timedelta(seconds=300))
+    async_fire_time_changed(hass)
+    await _spin(hass)
+    mock_client.reload_station.assert_not_called()
+
+
+@pytest.mark.usefixtures("fast_reload")
+async def test_reload_after_song_reloads_now_when_song_nearly_over(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: MagicMock,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    _reload_after_song_mode(init_integration)
+    freezer.tick(timedelta(seconds=239))
+    await _select(hass, "lounge")
+    await _spin(hass, lambda: mock_client.reload_station.await_count == 1)
+
+
+async def test_reload_after_song_waits_when_station_cannot_soft_reload(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    """Without a soft reload the next best way to let the song finish is to wait."""
+    _reload_after_song_mode(init_integration)
+    runtime = init_integration.runtime_data.stations[1]
+    runtime.station = replace(runtime.station, frontend="shoutcast2")
+    events = async_capture_events(hass, EVENT_SELECTOR_APPLIED)
+    await _select(hass, "lounge")
+    await _play(hass, init_integration, "old1", "tarde-chill")
+    await hass.async_block_till_done()
+    mock_client.reload_station.assert_not_called()
+    mock_client.skip_song.assert_not_called()
+    assert events[0].data["change_mode"] == "wait"
+
+
+@pytest.mark.parametrize(
+    ("current", "expected"),
+    [
+        ({"played_at": 1000, "duration": 240}, 1000 + 240 - 2.0 - 1100),
+        ({"played_at": 1000, "duration": 0}, None),
+        (None, None),
+    ],
+)
+def test_seconds_until_song_end(
+    current: dict[str, int] | None, expected: float | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(select_module, "RELOAD_SONG_END_LEAD", 2.0)
+    raw = nowplaying_raw(0)
+    if current is None:
+        raw["now_playing"] = None
+    else:
+        raw["now_playing"].update(current)
+    np = NowPlaying.from_dict(raw)
+    assert select_module.seconds_until_song_end(np, 1100.0) == expected

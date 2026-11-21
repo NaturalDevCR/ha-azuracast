@@ -57,6 +57,7 @@
           "keep_queue_stations": "Mantener la cola al cambiar un selector",
           "immediate_change_stations": "Cambiar los selectores saltando canciones",
           "reload_change_stations": "Cambiar los selectores recargando la estación",
+          "reload_after_song_stations": "Cambiar los selectores recargando la estación tras la canción",
           "allow_unavailable_stations": "Aceptar valores de selector sin nada programado ahora",
           "scan_interval": "Intervalo de actualización de playlists"
         },
@@ -64,7 +65,8 @@
           "excluded_stations": "Estas estaciones no tendrán dispositivo ni entidades.",
           "keep_queue_stations": "Por defecto, al cambiar un selector se vacía la cola para que el cambio se oiga después de la canción actual y de las una o dos canciones que AzuraCast ya tiene cargadas. Las estaciones de esta lista conservan su cola.",
           "immediate_change_stations": "Las estaciones de esta lista saltan la canción actual al cambiar un selector y luego cada canción ya cargada del valor anterior apenas empieza (tres como máximo). El cambio se oye enseguida, pero durante el fade se oyen unos segundos de cada canción saltada.",
-          "reload_change_stations": "Las estaciones de esta lista hacen una recarga suave al cambiar un selector, en cuanto AzuraCast tiene lista la siguiente canción: un corte breve y el nuevo valor suena de inmediato. Los oyentes siguen conectados. Solo para estaciones con Icecast (las demás saltan canciones) y nunca con un DJ en vivo. Tiene prioridad sobre saltar canciones.",
+          "reload_change_stations": "Las estaciones de esta lista hacen una recarga suave al cambiar un selector, en cuanto AzuraCast tiene lista la siguiente canción: un corte breve y el nuevo valor suena de inmediato. Los oyentes siguen conectados. Solo para estaciones con Icecast (las demás saltan canciones) y nunca con un DJ en vivo. Tiene prioridad sobre las otras dos.",
+          "reload_after_song_stations": "Igual que la recarga anterior, pero la canción actual termina primero: la estación se recarga dos segundos antes de que acabe y el nuevo valor empieza con la siguiente canción. Una canción del valor anterior que empiece antes se corta enseguida. Las estaciones que no admiten recarga suave esperan. Tiene prioridad sobre saltar canciones.",
           "allow_unavailable_stations": "Por defecto, se rechaza un valor de selector si ninguna de sus playlists puede sonar ahora. Las estaciones de esta lista lo aceptan igual.",
           "scan_interval": "Cada cuántos segundos se actualizan las playlists y la cola."
         }
