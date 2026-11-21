@@ -1,0 +1,28 @@
+[
+  {
+    "id": 1,
+    "name": "Ambientes",
+    "shortcode": "ambientes",
+    "description": "",
+    "frontend": "icecast",
+    "backend": "liquidsoap",
+    "timezone": "America/Costa_Rica",
+    "listen_url": "https://radio.example.com/listen/ambientes/radio.mp3",
+    "url": "",
+    "public_player_url": "https://radio.example.com/public/ambientes",
+    "is_public": true
+  },
+  {
+    "id": 2,
+    "name": "Party Time",
+    "shortcode": "party_time",
+    "description": "",
+    "frontend": "icecast",
+    "backend": "liquidsoap",
+    "timezone": "America/Costa_Rica",
+    "listen_url": "https://radio.example.com/listen/party_time/radio.mp3",
+    "url": "",
+    "public_player_url": "https://radio.example.com/public/party_time",
+    "is_public": true
+  }
+]

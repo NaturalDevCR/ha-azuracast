@@ -43,7 +43,7 @@ The entry's `unique_id` is the normalized URL. The flow aborts with `already_con
 
 The integration also provides:
 
-- A reauth flow that starts on any 401 from an authenticated call.
+- A reauth flow that starts when AzuraCast stops accepting the key (it answers 403; the integration checks `/frontend/account/me` to tell a bad key from a missing station permission).
 - A reconfigure flow to change the URL, key or SSL setting.
 
 ### 3.2 Station discovery and capabilities
@@ -222,8 +222,8 @@ Selector changes use the standard `select.select_option`. No custom service is a
 ## 9. Error handling and resilience
 
 - **API unreachable**: the station's entities become unavailable. They come back automatically.
-- **401 on an authenticated call**: starts reauth. Management entities become unavailable.
-- **403 on a management call after setup**: the integration raises a Repairs issue, `missing_permissions`, for that station and logs the endpoint.
+- **Key no longer accepted**: AzuraCast treats an unknown or revoked key as anonymous and answers 403, never 401. At setup, and whenever a management call gets 403, the integration calls `/frontend/account/me`; a 401 or 403 there starts reauth and management entities become unavailable. A 401 on any call is treated the same way.
+- **403 on a management call after setup while `/frontend/account/me` still answers 200**: the integration raises a Repairs issue, `missing_permissions`, for that station and logs the endpoint.
 - **SSE drops**: the hub switches to polling without making any entity unavailable.
 - **Timeouts**: 10 s per request. SSE has a read timeout of 90 s, and Centrifugo's pings keep the connection alive.
 - **Diagnostics**: the integration provides diagnostics. The API key and URL are redacted. Diagnostics include the station capability levels, the SSE status, the parsed selectors and any tag conflicts.
