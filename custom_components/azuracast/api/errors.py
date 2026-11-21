@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TypeIs
+from typing import TypeGuard
 
 
 class AzuraCastError(Exception):
@@ -46,11 +46,19 @@ def error_for_status(status: int, message: str) -> AzuraCastResponseError:
     return _BY_STATUS.get(status, AzuraCastResponseError)(status, message)
 
 
-def is_client_error(err: AzuraCastError) -> TypeIs[AzuraCastResponseError]:
-    """Whether the instance refused the request with a 4xx other than 401.
+_RETRYABLE_CLIENT_STATUSES = frozenset({401, 408, 429})
+
+
+def is_client_error(err: AzuraCastError) -> TypeGuard[AzuraCastResponseError]:
+    """Whether the instance refused the request with a lasting 4xx.
 
     AzuraCast answers 403 for a missing permission, but a station without the
     feature a route needs (e.g. a remote relay or AutoDJ off) may answer another
-    4xx; neither will change by retrying.
+    4xx; neither will change by retrying. 401 (auth), 408 and 429 (often from a
+    reverse proxy) are excluded because they are not a property of the station.
     """
-    return isinstance(err, AzuraCastResponseError) and 400 <= err.status < 500 and err.status != 401
+    return (
+        isinstance(err, AzuraCastResponseError)
+        and 400 <= err.status < 500
+        and err.status not in _RETRYABLE_CLIENT_STATUSES
+    )
