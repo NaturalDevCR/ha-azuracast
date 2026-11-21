@@ -17,6 +17,7 @@ async def test_diagnostics_redacts_and_reports(
     assert data["hub"] == {"sse_connected": False, "sse_ever_connected": False}
     by_id = {s["id"]: s for s in data["stations"]}
     assert by_id[1]["manage"] is True
+    assert by_id[1]["can_broadcast"] is True
     assert by_id[1]["playlists"] == 5
     assert by_id[1]["selectors"]["ambiente"] == {
         "options": ["chill", "fiesta", "lounge"],
@@ -25,4 +26,5 @@ async def test_diagnostics_redacts_and_reports(
         "conflicts": [],
     }
     assert by_id[2]["manage"] is False
+    assert by_id[2]["can_broadcast"] is False
     assert "selectors" not in by_id[2]

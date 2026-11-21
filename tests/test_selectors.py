@@ -45,6 +45,7 @@ CR = ZoneInfo("America/Costa_Rica")
         ("ha:\u212a=x", {}),  # KELVIN SIGN folds to "k"
         ("ha:\u0130=x", {}),  # LATIN CAPITAL LETTER I WITH DOT ABOVE folds to "i"
         ("ha:ambiente=\u017f", {}),
+        ("foo\u00a0ha:a=b", {"a": {"b"}}),  # NO-BREAK SPACE separates like a space
     ],
 )
 def test_parse_tags(description: str | None, expected: dict[str, set[str]]) -> None:

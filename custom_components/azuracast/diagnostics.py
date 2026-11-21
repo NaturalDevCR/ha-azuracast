@@ -22,6 +22,7 @@ def _station(runtime: StationRuntime) -> dict[str, Any]:
         "name": runtime.station.name,
         "timezone": runtime.station.timezone,
         "manage": runtime.manage is not None,
+        "can_broadcast": runtime.can_broadcast,
         "clear_queue_on_change": runtime.clear_queue_on_change,
         "reject_unavailable_values": runtime.reject_unavailable_values,
         "nowplaying_ok": runtime.nowplaying.last_update_success,
