@@ -23,12 +23,18 @@ from pytest_homeassistant_custom_component.common import (
 
 from custom_components.azuracast.api.errors import AzuraCastResponseError
 from custom_components.azuracast.api.models import Playlist
-from custom_components.azuracast.const import DOMAIN, EVENT_SELECTOR_APPLIED
+from custom_components.azuracast.const import (
+    DOMAIN,
+    EVENT_SELECTOR_APPLIED,
+    MAX_STALE_SKIPS,
+    PENDING_TIMEOUT,
+)
 
 from .common import make_nowplaying, playlists
 
 ENTITY = "select.ambientes_ambiente"
 TIMEOUT_WARNING = "was applied but no song from it started"
+PENDING_MINUTES = int(PENDING_TIMEOUT.total_seconds() // 60)
 
 
 @pytest.fixture(autouse=True)
@@ -96,8 +102,10 @@ async def test_select_applies_plan(
         "value": "lounge",
         "previous_value": "chill",
         "cleared_queue": True,
+        "skipped_current": False,
     }
     assert hass.states.get(ENTITY).attributes["pending_value"] == "lounge"
+    mock_client.skip_song.assert_not_called()
 
 
 async def test_pending_clears_when_song_from_value_starts(
@@ -135,7 +143,7 @@ async def test_pending_times_out(
 ) -> None:
     caplog.set_level(logging.WARNING)
     await _select(hass, "lounge")
-    await _advance(hass, freezer, 14)
+    await _advance(hass, freezer, PENDING_MINUTES - 1)
     assert TIMEOUT_WARNING not in caplog.text
     await _advance(hass, freezer, 2)
     assert hass.states.get(ENTITY).attributes["pending_value"] is None
@@ -151,13 +159,13 @@ async def test_reselect_while_pending_keeps_one_timer(
     caplog.set_level(logging.WARNING)
     init_integration.runtime_data.stations[1].reject_unavailable_values = False
     await _select(hass, "lounge")
-    await _advance(hass, freezer, 10)
+    await _advance(hass, freezer, PENDING_MINUTES - 5)
     await _select(hass, "fiesta")
     assert hass.states.get(ENTITY).attributes["pending_value"] == "fiesta"
     await _advance(hass, freezer, 6)
     assert TIMEOUT_WARNING not in caplog.text
     assert hass.states.get(ENTITY).attributes["pending_value"] == "fiesta"
-    await _advance(hass, freezer, 10)
+    await _advance(hass, freezer, PENDING_MINUTES - 5)
     assert hass.states.get(ENTITY).attributes["pending_value"] is None
     assert caplog.text.count(TIMEOUT_WARNING) == 1
     assert f"ambiente=fiesta {TIMEOUT_WARNING}" in caplog.text
@@ -177,7 +185,7 @@ async def test_selector_removed_while_pending(
     untagged = [replace(p, description=None) for p in playlists()]
     await _set_playlists(hass, init_integration, mock_client, untagged)
     assert entity_registry.async_get(ENTITY) is None
-    await _advance(hass, freezer, 16)
+    await _advance(hass, freezer, PENDING_MINUTES + 1)
     assert TIMEOUT_WARNING not in caplog.text
 
 
@@ -200,7 +208,7 @@ async def test_selector_removed_during_apply(
     mock_client.clear_queue.side_effect = _remove_selector
     await _select(hass, "lounge")
     assert entity_registry.async_get(ENTITY) is None
-    await _advance(hass, freezer, 16)
+    await _advance(hass, freezer, PENDING_MINUTES + 1)
     assert TIMEOUT_WARNING not in caplog.text
 
 
@@ -285,7 +293,7 @@ async def test_partial_failure_clears_earlier_pending(
     assert mock_client.set_playlist_enabled.await_count == 2
     assert mock_client.get_playlists.await_count >= 1
     assert hass.states.get(ENTITY).attributes["pending_value"] is None
-    await _advance(hass, freezer, 16)
+    await _advance(hass, freezer, PENDING_MINUTES + 1)
     assert TIMEOUT_WARNING not in caplog.text
 
 
@@ -420,3 +428,129 @@ async def test_select_refresh_failure_changes_nothing(
     mock_client.set_playlist_enabled.assert_not_called()
     mock_client.clear_queue.assert_not_called()
     assert events == []
+
+
+async def _play(hass: HomeAssistant, entry: MockConfigEntry, song_id: str, playlist: str) -> None:
+    entry.runtime_data.stations[1].nowplaying.push(
+        make_nowplaying(0, song_id=song_id, playlist=playlist)
+    )
+    await hass.async_block_till_done()
+
+
+def _immediate(entry: MockConfigEntry) -> None:
+    entry.runtime_data.stations[1].change_immediately = True
+
+
+async def test_default_change_skips_nothing(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    """Songs Liquidsoap already holds play out: smooth, at the cost of a delay."""
+    await _select(hass, "lounge")
+    await _play(hass, init_integration, "old1", "tarde-chill")
+    await _play(hass, init_integration, "old2", "tarde-chill")
+    mock_client.skip_song.assert_not_called()
+    assert hass.states.get(ENTITY).attributes["pending_value"] == "lounge"
+
+
+async def test_immediate_change_skips_current_then_stale_songs(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    _immediate(init_integration)
+    events = async_capture_events(hass, EVENT_SELECTOR_APPLIED)
+    await _select(hass, "lounge")
+    assert mock_client.mock_calls.index(call.clear_queue(1)) < mock_client.mock_calls.index(
+        call.skip_song(1)
+    )
+    assert events[0].data["skipped_current"] is True
+    # The song playing at apply time was skipped already; it is not skipped again.
+    await _play(hass, init_integration, "a1", "tarde-chill")
+    assert mock_client.skip_song.await_count == 1
+    # A song from the previous value that Liquidsoap had loaded is skipped once.
+    await _play(hass, init_integration, "old1", "tarde-chill")
+    assert mock_client.skip_song.await_count == 2
+    await _play(hass, init_integration, "old1", "tarde-chill")
+    assert mock_client.skip_song.await_count == 2
+    await _play(hass, init_integration, "new1", "tarde-lounge")
+    assert hass.states.get(ENTITY).attributes["pending_value"] is None
+    # Once the change has landed, songs from other values are left alone.
+    await _play(hass, init_integration, "old2", "tarde-chill")
+    assert mock_client.skip_song.await_count == 2
+
+
+async def test_immediate_stale_skips_are_capped(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    _immediate(init_integration)
+    await _select(hass, "lounge")
+    for index in range(MAX_STALE_SKIPS + 2):
+        await _play(hass, init_integration, f"old{index}", "tarde-chill")
+    assert mock_client.skip_song.await_count == 1 + MAX_STALE_SKIPS
+
+
+async def test_immediate_leaves_untagged_songs_and_requests(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    _immediate(init_integration)
+    await _select(hass, "lounge")
+    await _play(hass, init_integration, "u1", "respaldo")
+    await _play(hass, init_integration, "r1", "")
+    assert mock_client.skip_song.await_count == 1
+    assert hass.states.get(ENTITY).attributes["pending_value"] == "lounge"
+
+
+async def test_immediate_stale_skip_failure_is_logged(
+    hass: HomeAssistant,
+    init_integration: MockConfigEntry,
+    mock_client: MagicMock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _immediate(init_integration)
+    await _select(hass, "lounge")
+    mock_client.skip_song.side_effect = AzuraCastResponseError(500, "boom")
+    with caplog.at_level(logging.WARNING):
+        await _play(hass, init_integration, "old1", "tarde-chill")
+    assert "Could not skip a song from the previous value" in caplog.text
+
+
+async def test_immediate_skip_failure_keeps_selection(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    _immediate(init_integration)
+    mock_client.skip_song.side_effect = AzuraCastResponseError(500, "boom")
+    events = async_capture_events(hass, EVENT_SELECTOR_APPLIED)
+    await _select(hass, "lounge")
+    assert events[0].data["skipped_current"] is False
+    assert hass.states.get(ENTITY).attributes["pending_value"] == "lounge"
+
+
+async def test_immediate_not_used_for_repair(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    _immediate(init_integration)
+    await _set_playlists(hass, init_integration, mock_client, _with_enabled({10}))
+    await _select(hass, "chill")
+    mock_client.skip_song.assert_not_called()
+
+
+async def test_immediate_skips_nothing_when_queue_kept(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    """Keeping the queue keeps old songs on purpose; skipping them would fight it."""
+    _immediate(init_integration)
+    init_integration.runtime_data.stations[1].clear_queue_on_change = False
+    events = async_capture_events(hass, EVENT_SELECTOR_APPLIED)
+    await _select(hass, "lounge")
+    await _play(hass, init_integration, "old1", "tarde-chill")
+    mock_client.skip_song.assert_not_called()
+    assert events[0].data["skipped_current"] is False
+
+
+async def test_immediate_needs_broadcast(
+    hass: HomeAssistant, init_no_broadcast: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    _immediate(init_no_broadcast)
+    events = async_capture_events(hass, EVENT_SELECTOR_APPLIED)
+    await _select(hass, "lounge")
+    await _play(hass, init_no_broadcast, "old1", "tarde-chill")
+    mock_client.skip_song.assert_not_called()
+    assert events[0].data["skipped_current"] is False

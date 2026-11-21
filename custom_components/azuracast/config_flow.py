@@ -35,6 +35,7 @@ from .api.errors import AzuraCastAuthError, AzuraCastError, AzuraCastPermissionE
 from .const import (
     CONF_ALLOW_UNAVAILABLE_STATIONS,
     CONF_EXCLUDED_STATIONS,
+    CONF_IMMEDIATE_CHANGE_STATIONS,
     CONF_KEEP_QUEUE_STATIONS,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -207,6 +208,10 @@ class AzuraCastOptionsFlow(OptionsFlowWithReload):
                 ): station_selector,
                 probatio.Optional(
                     CONF_KEEP_QUEUE_STATIONS, default=_known(CONF_KEEP_QUEUE_STATIONS)
+                ): station_selector,
+                probatio.Optional(
+                    CONF_IMMEDIATE_CHANGE_STATIONS,
+                    default=_known(CONF_IMMEDIATE_CHANGE_STATIONS),
                 ): station_selector,
                 probatio.Optional(
                     CONF_ALLOW_UNAVAILABLE_STATIONS,

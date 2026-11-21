@@ -24,6 +24,7 @@ def _station(runtime: StationRuntime) -> dict[str, Any]:
         "manage": runtime.manage is not None,
         "can_broadcast": runtime.can_broadcast,
         "clear_queue_on_change": runtime.clear_queue_on_change,
+        "change_immediately": runtime.change_immediately,
         "reject_unavailable_values": runtime.reject_unavailable_values,
         "nowplaying_ok": runtime.nowplaying.last_update_success,
         "online": np.is_online if np else None,

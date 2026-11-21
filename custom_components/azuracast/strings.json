@@ -55,12 +55,14 @@
         "data": {
           "excluded_stations": "Stations to ignore",
           "keep_queue_stations": "Keep the queue when a selector changes",
+          "immediate_change_stations": "Change selectors immediately",
           "allow_unavailable_stations": "Accept selector values with nothing scheduled now",
           "scan_interval": "Playlist refresh interval"
         },
         "data_description": {
           "excluded_stations": "These stations get no device or entities.",
-          "keep_queue_stations": "By default, changing a selector clears the upcoming queue so the change is heard after the current song. Stations listed here keep their queue.",
+          "keep_queue_stations": "By default, changing a selector clears the upcoming queue so the change is heard after the current song and the one or two songs AzuraCast has already loaded. Stations listed here keep their queue.",
+          "immediate_change_stations": "Stations listed here skip the current song when a selector changes, and then each already-loaded song from the previous value as it starts, so the change is heard right away. A few seconds of each skipped song are heard during the crossfade.",
           "allow_unavailable_stations": "By default, a selector value is rejected when none of its playlists can play right now. Stations listed here accept it anyway.",
           "scan_interval": "How often playlists and the queue are refreshed, in seconds."
         }

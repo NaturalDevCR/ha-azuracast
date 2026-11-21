@@ -55,12 +55,14 @@
         "data": {
           "excluded_stations": "Estaciones a ignorar",
           "keep_queue_stations": "Mantener la cola al cambiar un selector",
+          "immediate_change_stations": "Cambiar los selectores de inmediato",
           "allow_unavailable_stations": "Aceptar valores de selector sin nada programado ahora",
           "scan_interval": "Intervalo de actualización de playlists"
         },
         "data_description": {
           "excluded_stations": "Estas estaciones no tendrán dispositivo ni entidades.",
-          "keep_queue_stations": "Por defecto, al cambiar un selector se vacía la cola para que el cambio se oiga después de la canción actual. Las estaciones de esta lista conservan su cola.",
+          "keep_queue_stations": "Por defecto, al cambiar un selector se vacía la cola para que el cambio se oiga después de la canción actual y de las una o dos canciones que AzuraCast ya tiene cargadas. Las estaciones de esta lista conservan su cola.",
+          "immediate_change_stations": "Las estaciones de esta lista saltan la canción actual al cambiar un selector y luego cada canción ya cargada del valor anterior apenas empieza, para que el cambio se oiga de inmediato. Durante el crossfade se oyen unos segundos de cada canción saltada.",
           "allow_unavailable_stations": "Por defecto, se rechaza un valor de selector si ninguna de sus playlists puede sonar ahora. Las estaciones de esta lista lo aceptan igual.",
           "scan_interval": "Cada cuántos segundos se actualizan las playlists y la cola."
         }

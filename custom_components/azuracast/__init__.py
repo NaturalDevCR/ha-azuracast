@@ -30,6 +30,7 @@ from .api.models import Station
 from .const import (
     CONF_ALLOW_UNAVAILABLE_STATIONS,
     CONF_EXCLUDED_STATIONS,
+    CONF_IMMEDIATE_CHANGE_STATIONS,
     CONF_KEEP_QUEUE_STATIONS,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -87,6 +88,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: AzuraCastConfigEntry) ->
     excluded = set(options.get(CONF_EXCLUDED_STATIONS, []))
     keep_queue = set(options.get(CONF_KEEP_QUEUE_STATIONS, []))
     allow_unavailable = set(options.get(CONF_ALLOW_UNAVAILABLE_STATIONS, []))
+    change_immediately = set(options.get(CONF_IMMEDIATE_CHANGE_STATIONS, []))
     interval = timedelta(seconds=int(options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)))
 
     device_registry = dr.async_get(hass)
@@ -118,6 +120,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: AzuraCastConfigEntry) ->
             manage=manage,
             clear_queue_on_change=key not in keep_queue,
             reject_unavailable_values=key not in allow_unavailable,
+            change_immediately=key in change_immediately,
         )
 
     _remove_stale_devices(device_registry, entry, runtimes)

@@ -14,7 +14,7 @@ Lleva a Home Assistant todas las estaciones de una instancia de [AzuraCast](http
 - **Carátulas a través de Home Assistant.** Home Assistant descarga la carátula y se la entrega a tu navegador con su proxy multimedia, así que funciona con instancias solo accesibles en la red local y con certificados autofirmados, y respeta la opción **Verificar el certificado SSL**.
 - **Playlists como interruptores**, con su ID, tipo, orden, peso, programación y tags como atributos.
 - Botones para **saltar canción** y **vaciar cola**, además de acciones para saltar, vaciar la cola, activar o desactivar varias playlists a la vez y rebarajar una playlist.
-- **Selectores por tags.** Escribe `ha:<selector>=<valor>` en la descripción de una playlist, por ejemplo `ha:ambiente=chill`. Cada estación obtiene un `select` con todos los valores que encuentra. Al elegir un valor se activan las playlists de ese valor, se desactivan las demás del mismo selector y se vacía la cola, así que el cambio se oye cuando termina la canción actual. Las programaciones de AzuraCast siguen decidiendo cuál de ellas suena a cada hora.
+- **Selectores por tags.** Escribe `ha:<selector>=<valor>` en la descripción de una playlist, por ejemplo `ha:ambiente=chill`. Cada estación obtiene un `select` con todos los valores que encuentra. Al elegir un valor se activan las playlists de ese valor, se desactivan las demás del mismo selector y se vacía la cola. AzuraCast le entrega a su reproductor una o dos canciones por adelantado que no se pueden retirar, así que por defecto el cambio se oye después de la canción actual y de esas una o dos, sin cortes. Una estación puede en cambio cambiar de inmediato: se saltan la canción actual y las ya cargadas del valor anterior, y durante el crossfade se oyen unos segundos de cada una. Las programaciones de AzuraCast siguen decidiendo cuál de ellas suena a cada hora.
 - **Eventos** para automatizaciones: `azuracast_song_changed` y `azuracast_selector_applied`.
 - Funciona **sin API key** (datos públicos, solo lectura) o con una (gestión). Las estaciones que la key no puede gestionar quedan en solo lectura.
 
@@ -58,7 +58,8 @@ La URL, la API key y la opción de SSL se pueden cambiar después con **Reconfig
 ### Opciones
 
 - **Estaciones a ignorar.** No tendrán dispositivo ni entidades.
-- **Mantener la cola al cambiar un selector.** Por defecto se vacía la cola para que el cambio ocurra después de la canción actual.
+- **Mantener la cola al cambiar un selector.** Por defecto se vacía la cola, así que el cambio ocurre después de la canción actual y de las una o dos que AzuraCast ya tiene cargadas. Las estaciones de esta lista conservan su cola.
+- **Cambiar los selectores de inmediato.** Las estaciones de esta lista saltan la canción actual al cambiar un selector y luego cada canción ya cargada del valor anterior apenas empieza (tres como máximo), para que el nuevo valor empiece enseguida. Durante el crossfade se oyen unos segundos de cada canción saltada. Requiere vaciar la cola y el permiso de Broadcasting.
 - **Aceptar valores de selector sin nada programado ahora.** Por defecto se rechaza un valor si ninguna de sus playlists puede sonar en este momento, para que la estación nunca quede en silencio.
 - **Intervalo de actualización de playlists** (30–300 s, 60 por defecto).
 
@@ -96,7 +97,7 @@ A las 18:00, AzuraCast pasa de `tarde-chill` a `noche-chill` por sí solo. Elegi
 - **Volver a elegir el valor actual nunca vacía la cola ni se rechaza.** Solo vuelve a activar las playlists de ese valor que estuvieran desactivadas (por ejemplo, a mano), para que el ambiente continúe en el siguiente bloque horario.
 - Un valor sin nada que pueda sonar en este momento se rechaza, salvo que la estación esté en **Aceptar valores de selector sin nada programado ahora**.
 - El select muestra un valor solo cuando exactamente un valor tiene playlists activadas. Si no, no muestra ningún valor y el atributo `reason` indica por qué: `none_enabled` o `mixed`.
-- Atributos: `available_now` (valores que pueden sonar ahora), `pending_value`, `playlists` (las playlists de cada valor) y `reason`. `pending_value` se borra cuando empieza una canción del nuevo valor, o después de 15 minutos.
+- Atributos: `available_now` (valores que pueden sonar ahora), `pending_value`, `playlists` (las playlists de cada valor) y `reason`. `pending_value` se borra cuando empieza una canción del nuevo valor, o después de 30 minutos.
 - Una playlist con dos valores del mismo selector queda fuera de ese selector, y un aviso de reparación la menciona.
 
 ### Programaciones
@@ -145,7 +146,7 @@ data:
 ## Eventos
 
 - `azuracast_song_changed`: `station_id`, `station_shortcode`, `song`, `playlist`, `tags`.
-- `azuracast_selector_applied`: `station_id`, `selector`, `value`, `previous_value`, `cleared_queue`. No se dispara cuando se vuelve a elegir el valor actual.
+- `azuracast_selector_applied`: `station_id`, `selector`, `value`, `previous_value`, `cleared_queue`, `skipped_current`. No se dispara cuando se vuelve a elegir el valor actual.
 
 ## Cómo se actualizan los datos
 
@@ -155,7 +156,7 @@ Los datos de lo que suena llegan por el stream; consultar cada 30 s es solo un r
 
 - Las estaciones que no son públicas aparecen solo si la API key puede verlas.
 - Las estaciones nuevas requieren recargar la integración. Las playlists y los selectores nuevos aparecen solos.
-- Los cambios se oyen al terminar la canción actual, no al instante.
+- Por defecto un cambio de selector se oye después de la canción actual y de las una o dos que AzuraCast ya le entregó a su reproductor; AzuraCast no ofrece forma de retirarlas. Cambiar de inmediato las salta, lo que no es transparente.
 - Los bloques horarios de un mismo valor de selector no deberían solaparse. Todavía no se ha verificado cómo elige AzuraCast entre playlists programadas que se solapan.
 - Una playlist con dos valores del mismo selector queda fuera de ese selector, y un aviso de reparación la menciona.
 - Una playlist renombrada conserva el nombre anterior de su interruptor hasta que se recarga la integración.

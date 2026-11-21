@@ -27,6 +27,7 @@ class StationRuntime:
     manage: ManageCoordinator | None
     clear_queue_on_change: bool
     reject_unavailable_values: bool
+    change_immediately: bool = False
 
     @property
     def can_broadcast(self) -> bool:

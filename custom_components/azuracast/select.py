@@ -15,7 +15,7 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.util import dt as dt_util
 
 from .api.errors import AzuraCastError
-from .const import DOMAIN, EVENT_SELECTOR_APPLIED, LOGGER, PENDING_TIMEOUT
+from .const import DOMAIN, EVENT_SELECTOR_APPLIED, LOGGER, MAX_STALE_SKIPS, PENDING_TIMEOUT
 from .coordinator import ManageCoordinator
 from .entity import AzuraCastEntity, remove_dynamic_entities, track_dynamic_entities
 from .runtime import AzuraCastConfigEntry, StationRuntime
@@ -72,6 +72,11 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
         self._pending_song_id: str | None = None
         self._cancel_pending: CALLBACK_TYPE | None = None
         self._removed = False
+        # Immediate changes skip songs from the previous value that Liquidsoap
+        # already held, as they start (see _handle_nowplaying).
+        self._skip_stale = False
+        self._stale_skips = 0
+        self._last_skipped: tuple[str, int] | None = None
 
     @property
     def _selector(self) -> Selector | None:
@@ -125,6 +130,7 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
         self._clear_pending_timer()
         self._pending = None
         self._pending_song_id = None
+        self._skip_stale = False
 
     async def async_select_option(self, option: str) -> None:
         # Plan from fresh playlist state: changes made in the AzuraCast UI since
@@ -187,7 +193,13 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
         if repair:
             await self.coordinator.async_refresh()
             return
-        self._set_pending(option)
+        # Liquidsoap already holds one or two songs that clearing the queue
+        # cannot take back. By default they play out (smooth, but the change is
+        # heard a few songs later); an immediate change skips the current song
+        # and then each held song from another value as it starts.
+        immediate = clear_queue and self._runtime.change_immediately
+        self._set_pending(option, skip_stale=immediate)
+        skipped_current = immediate and await self._async_skip("the current song")
         self.hass.bus.async_fire(
             EVENT_SELECTOR_APPLIED,
             {
@@ -196,18 +208,36 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
                 "value": option,
                 "previous_value": previous,
                 "cleared_queue": clear_queue,
+                "skipped_current": skipped_current,
             },
         )
         await self.coordinator.async_refresh()
 
+    async def _async_skip(self, what: str) -> bool:
+        """Skip the playing song; a failure is logged, never raised."""
+        try:
+            await self.client.skip_song(self.station.id)
+        except AzuraCastError as err:
+            LOGGER.warning(
+                "%s: Could not skip %s after changing %s: %s",
+                self.station.name,
+                what,
+                self.selector_key,
+                err,
+            )
+            return False
+        return True
+
     @callback
-    def _set_pending(self, value: str) -> None:
+    def _set_pending(self, value: str, *, skip_stale: bool) -> None:
         if self._removed:
             return
         self._clear_pending_timer()
         np = self._runtime.nowplaying.data
         self._pending = value
         self._pending_song_id = np.current.song.id if np and np.current else None
+        self._skip_stale = skip_stale
+        self._stale_skips = 0
         self._cancel_pending = async_call_later(self.hass, PENDING_TIMEOUT, self._pending_expired)
         self.async_write_ha_state()
 
@@ -218,6 +248,7 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
             return
         self._pending = None
         self._pending_song_id = None
+        self._skip_stale = False
         if not self._removed:
             self.async_write_ha_state()
 
@@ -249,3 +280,31 @@ class SelectorSelect(AzuraCastEntity[ManageCoordinator], SelectEntity):
             return
         if np.current.playlist in selector.playlist_names(self._pending):
             self._reset_pending()
+            return
+        if self._is_stale(selector, np.current.playlist):
+            self._skip_stale_song((np.current.song.id, np.current.played_at))
+
+    def _is_stale(self, selector: Selector, playlist: str | None) -> bool:
+        """Whether a playlist belongs to another value of this selector."""
+        return any(
+            playlist in selector.playlist_names(value)
+            for value in selector.members
+            if value != self._pending
+        )
+
+    @callback
+    def _skip_stale_song(self, song: tuple[str, int]) -> None:
+        if (
+            not self._skip_stale
+            or not self._runtime.can_broadcast
+            or song == self._last_skipped
+            or self._stale_skips >= MAX_STALE_SKIPS
+        ):
+            return
+        self._last_skipped = song
+        self._stale_skips += 1
+        self._entry.async_create_background_task(
+            self.hass,
+            self._async_skip("a song from the previous value"),
+            name=f"azuracast skip stale song {self.station.id}",
+        )
