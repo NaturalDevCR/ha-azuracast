@@ -11,7 +11,6 @@ import aiohttp
 from .errors import (
     AzuraCastConnectionError,
     AzuraCastError,
-    AzuraCastNotFoundError,
     AzuraCastResponseError,
     error_for_status,
 )
@@ -126,23 +125,14 @@ class AzuraCastClient:
         data = await self._request("GET", f"/station/{station_id}/queue")
         return [QueueItem.from_dict(row) for row in data or []]
 
-    async def delete_queue_item(self, station_id: int, item_id: int) -> None:
-        await self._request("DELETE", f"/station/{station_id}/queue/{item_id}")
+    async def clear_queue(self, station_id: int) -> None:
+        """Clear the upcoming queue.
 
-    async def clear_queue(self, station_id: int) -> int:
-        """Delete every queued item; return how many were actually deleted.
-
-        An item can be played or consumed between listing and deleting it, and
-        AzuraCast then answers 404 for it, which is not an error here.
+        AzuraCast removes only the items not yet sent to the AutoDJ and puts
+        their tracks back in their playlists' shuffle order, so the next song
+        is picked again from the playlists enabled now.
         """
-        deleted = 0
-        for item in await self.get_queue(station_id):
-            try:
-                await self.delete_queue_item(station_id, item.id)
-            except AzuraCastNotFoundError:
-                continue
-            deleted += 1
-        return deleted
+        await self._request("POST", f"/station/{station_id}/queue/clear")
 
     async def skip_song(self, station_id: int) -> None:
         await self._request("POST", f"/station/{station_id}/backend/skip")

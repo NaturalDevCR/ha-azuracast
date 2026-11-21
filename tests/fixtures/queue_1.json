@@ -1,12 +1,16 @@
 [
   {
-    "id": 501, "cued_at": 1795205030, "played_at": 1795205040, "duration": 200,
-    "playlist": "tarde-chill", "is_request": false, "sent_to_autodj": true, "is_played": false,
-    "song": {"id": "a2", "text": "Trio Mar - Slow Tide", "artist": "Trio Mar", "title": "Slow Tide", "album": "Costa", "art": null}
+    "cued_at": 1795205030, "played_at": 1795205040, "duration": 200.0,
+    "playlist": "tarde-chill", "is_request": false,
+    "song": {"id": "a2", "text": "Trio Mar - Slow Tide", "artist": "Trio Mar", "title": "Slow Tide", "album": "Costa", "art": null},
+    "sent_to_autodj": true, "is_played": false, "autodj_custom_uri": null, "log": [],
+    "links": {"self": "https://radio.example.com/api/station/1/queue/501"}
   },
   {
-    "id": 502, "cued_at": 1795205030, "played_at": 1795205240, "duration": 210,
-    "playlist": "tarde-chill", "is_request": false, "sent_to_autodj": false, "is_played": false,
-    "song": {"id": "a3", "text": "Trio Mar - Sand", "artist": "Trio Mar", "title": "Sand", "album": "Costa", "art": null}
+    "cued_at": 1795205030, "played_at": 1795205240, "duration": 210.0,
+    "playlist": "tarde-chill", "is_request": false,
+    "song": {"id": "a3", "text": "Trio Mar - Sand", "artist": "Trio Mar", "title": "Sand", "album": "Costa", "art": null},
+    "sent_to_autodj": false, "is_played": false, "autodj_custom_uri": null, "log": [],
+    "links": {"self": "https://radio.example.com/api/station/1/queue/502"}
   }
 ]

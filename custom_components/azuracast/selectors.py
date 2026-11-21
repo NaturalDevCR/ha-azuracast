@@ -139,12 +139,11 @@ def plan_apply(selector: Selector, value: str) -> ApplyPlan:
 
 async def execute_plan(
     client: AzuraCastClient, station_id: int, plan: ApplyPlan, *, clear_queue: bool
-) -> int:
+) -> None:
     """Enable first, then disable, then optionally clear the queue."""
     for playlist_id in plan.enable:
         await client.set_playlist_enabled(station_id, playlist_id, True)
     for playlist_id in plan.disable:
         await client.set_playlist_enabled(station_id, playlist_id, False)
-    if not clear_queue:
-        return 0
-    return await client.clear_queue(station_id)
+    if clear_queue:
+        await client.clear_queue(station_id)

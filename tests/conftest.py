@@ -54,7 +54,7 @@ def mock_client() -> Generator[MagicMock]:
         client.get_nowplaying.return_value = nowplaying_list()
         client.get_playlists.side_effect = _playlists_for
         client.get_queue.return_value = queue()
-        client.clear_queue.return_value = 2
+        client.clear_queue.return_value = None
         yield client
 
 

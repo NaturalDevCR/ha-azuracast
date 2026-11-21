@@ -218,17 +218,21 @@ class Playlist:
 
 @dataclass(frozen=True, slots=True)
 class QueueItem:
-    """An upcoming AutoDJ queue entry."""
+    """An upcoming AutoDJ queue entry.
 
-    id: int
+    AzuraCast does not include the queue row id in the list response (only in
+    ``links.self``), so none is kept here; the queue is cleared as a whole.
+    """
+
     song: Song | None
     playlist: str | None
+    sent_to_autodj: bool
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> QueueItem:
         song = data.get("song")
         return cls(
-            id=int(data["id"]),
             song=Song.from_dict(song) if isinstance(song, dict) else None,
             playlist=_opt_str(data.get("playlist")),
+            sent_to_autodj=bool(data.get("sent_to_autodj")),
         )

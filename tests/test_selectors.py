@@ -139,11 +139,7 @@ def test_untagged_playlists_never_in_plan() -> None:
 
 async def test_execute_plan_order_and_queue() -> None:
     client = AsyncMock()
-    client.clear_queue.return_value = 2
-    cleared = await execute_plan(
-        client, 1, ApplyPlan(enable=(12,), disable=(10, 11)), clear_queue=True
-    )
-    assert cleared == 2
+    await execute_plan(client, 1, ApplyPlan(enable=(12,), disable=(10, 11)), clear_queue=True)
     assert client.mock_calls == [
         call.set_playlist_enabled(1, 12, True),
         call.set_playlist_enabled(1, 10, False),
@@ -154,9 +150,7 @@ async def test_execute_plan_order_and_queue() -> None:
 
 async def test_execute_plan_without_queue_clear() -> None:
     client = AsyncMock()
-    assert (
-        await execute_plan(client, 1, ApplyPlan(enable=(12,), disable=()), clear_queue=False) == 0
-    )
+    await execute_plan(client, 1, ApplyPlan(enable=(12,), disable=()), clear_queue=False)
     client.clear_queue.assert_not_called()
 
 

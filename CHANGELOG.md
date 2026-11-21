@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2
+
+- Fix setup failing with `'id'` against a real AzuraCast: the queue list has no row id. Clearing the queue now uses AzuraCast's own clear endpoint, which removes only songs not yet sent to the AutoDJ and returns them to their playlists' shuffle order.
+
 ## 0.1.1
 
 - Fix the actions' target definition so Home Assistant's validation accepts it.

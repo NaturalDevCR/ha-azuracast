@@ -90,7 +90,7 @@ async def test_playlists_and_queue(
     aioclient_mock.get(f"{API}/station/1/queue", json=load_fixture("queue_1.json"))
     client = _client(hass)
     assert [p.id for p in await client.get_playlists(1)] == [10, 11, 12, 13, 14]
-    assert [q.id for q in await client.get_queue(1)] == [501, 502]
+    assert [q.sent_to_autodj for q in await client.get_queue(1)] == [True, False]
 
 
 async def test_set_playlist_enabled_sends_partial_body(
@@ -116,34 +116,20 @@ async def test_reshuffle_and_skip(hass: HomeAssistant, aioclient_mock: AiohttpCl
     ]
 
 
-async def test_clear_queue_deletes_each_item(
+async def test_clear_queue_uses_clear_endpoint(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
 ) -> None:
-    aioclient_mock.get(f"{API}/station/1/queue", json=load_fixture("queue_1.json"))
-    aioclient_mock.delete(f"{API}/station/1/queue/501", json={"success": True})
-    aioclient_mock.delete(f"{API}/station/1/queue/502", json={"success": True})
-    assert await _client(hass).clear_queue(1) == 2
-    deletes = [str(c[1]) for c in aioclient_mock.mock_calls if c[0] == "DELETE"]
-    assert deletes == [f"{API}/station/1/queue/501", f"{API}/station/1/queue/502"]
+    aioclient_mock.post(f"{API}/station/1/queue/clear", json={"success": True})
+    await _client(hass).clear_queue(1)
+    assert [(c[0], str(c[1])) for c in aioclient_mock.mock_calls] == [
+        ("POST", f"{API}/station/1/queue/clear"),
+    ]
 
 
-async def test_clear_queue_skips_items_already_gone(
+async def test_clear_queue_errors_propagate(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
 ) -> None:
-    """An item played or consumed between listing and deleting answers 404."""
-    aioclient_mock.get(f"{API}/station/1/queue", json=load_fixture("queue_1.json"))
-    aioclient_mock.delete(f"{API}/station/1/queue/501", status=404, json={"message": "gone"})
-    aioclient_mock.delete(f"{API}/station/1/queue/502", json={"success": True})
-    assert await _client(hass).clear_queue(1) == 1
-    deletes = [str(c[1]) for c in aioclient_mock.mock_calls if c[0] == "DELETE"]
-    assert deletes == [f"{API}/station/1/queue/501", f"{API}/station/1/queue/502"]
-
-
-async def test_clear_queue_other_errors_propagate(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
-) -> None:
-    aioclient_mock.get(f"{API}/station/1/queue", json=load_fixture("queue_1.json"))
-    aioclient_mock.delete(f"{API}/station/1/queue/501", status=500, json={"message": "boom"})
+    aioclient_mock.post(f"{API}/station/1/queue/clear", status=500, json={"message": "boom"})
     with pytest.raises(AzuraCastResponseError):
         await _client(hass).clear_queue(1)
 

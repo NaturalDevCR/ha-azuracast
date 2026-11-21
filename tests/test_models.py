@@ -98,7 +98,7 @@ def test_playlist_missing_description_is_empty() -> None:
 
 def test_queue_from_dict() -> None:
     items = queue()
-    assert [i.id for i in items] == [501, 502]
+    assert [i.sent_to_autodj for i in items] == [True, False]
     assert items[0].song is not None
     assert items[0].song.title == "Slow Tide"
     assert items[0].playlist == "tarde-chill"
