@@ -62,6 +62,8 @@ class AzuraCastMediaPlayer(AzuraCastNowPlayingEntity, MediaPlayerEntity):
         )
         self._attr_media_position_updated_at: datetime | None = dt_util.utcnow()
 
+    _available_off_air = True
+
     @property
     def _np(self) -> NowPlaying | None:
         return self.coordinator.data
@@ -70,7 +72,7 @@ class AzuraCastMediaPlayer(AzuraCastNowPlayingEntity, MediaPlayerEntity):
     def state(self) -> MediaPlayerState | None:
         np = self._np
         if np is None:
-            return None
+            return MediaPlayerState.OFF if self.coordinator.off_air else None
         if not np.is_online:
             return MediaPlayerState.OFF
         return MediaPlayerState.PLAYING if np.current else MediaPlayerState.IDLE

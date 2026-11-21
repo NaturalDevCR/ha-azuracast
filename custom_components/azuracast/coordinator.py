@@ -164,12 +164,24 @@ class NowPlayingCoordinator(DataUpdateCoordinator[NowPlaying | None]):
         self.station = station
         self._tags_for = tags_for
         self._last_song_id: str | None = None
+        self.off_air = False
 
     async def _async_update_data(self) -> NowPlaying | None:
         return self.data
 
     @callback
+    def mark_off_air(self) -> None:
+        """The station is missing from a full now-playing list: it is stopped.
+
+        AzuraCast leaves a station it is not broadcasting out of /nowplaying, so
+        no data will come; entities that can tell "off" from "unknown" use this.
+        """
+        self.off_air = True
+        self.async_set_updated_data(None)
+
+    @callback
     def push(self, nowplaying: NowPlaying) -> None:
+        self.off_air = False
         self.async_set_updated_data(nowplaying)
         current = nowplaying.current
         if current is None:

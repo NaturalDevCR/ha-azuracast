@@ -80,9 +80,16 @@ class AzuraCastEntity[CoordinatorT: DataUpdateCoordinator[Any]](CoordinatorEntit
 class AzuraCastNowPlayingEntity(AzuraCastEntity[NowPlayingCoordinator]):
     """A station entity fed by the now-playing coordinator."""
 
+    # Entities that show "off" for a stopped station instead of unavailable.
+    _available_off_air = False
+
     @property
     def available(self) -> bool:
-        return super().available and self.coordinator.data is not None
+        if not super().available:
+            return False
+        if self.coordinator.data is not None:
+            return True
+        return self._available_off_air and self.coordinator.off_air
 
 
 @callback

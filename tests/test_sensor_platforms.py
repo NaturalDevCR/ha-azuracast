@@ -92,6 +92,16 @@ async def test_media_player_offline(hass: HomeAssistant, init_integration: MockC
     assert hass.states.get("binary_sensor.ambientes_online").state == STATE_OFF
 
 
+async def test_off_air_station(hass: HomeAssistant, init_integration: MockConfigEntry) -> None:
+    """A station missing from /nowplaying (stopped) reads off, not unavailable."""
+    init_integration.runtime_data.stations[2].nowplaying.mark_off_air()
+    await hass.async_block_till_done()
+    assert hass.states.get("binary_sensor.party_time_online").state == STATE_OFF
+    assert hass.states.get("media_player.party_time").state == STATE_OFF
+    assert hass.states.get("sensor.party_time_listeners").state == STATE_UNAVAILABLE
+    assert hass.states.get("binary_sensor.party_time_live_dj").state == STATE_UNAVAILABLE
+
+
 async def test_sensors(hass: HomeAssistant, init_integration: MockConfigEntry) -> None:
     listeners = hass.states.get("sensor.ambientes_listeners")
     assert listeners.state == "3"

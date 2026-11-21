@@ -85,6 +85,24 @@ async def test_start_polls_once_and_dispatches(
     await hub.async_stop()
 
 
+async def test_station_missing_from_poll_is_off_air(
+    hass: HomeAssistant, entry: MockConfigEntry, client: MagicMock
+) -> None:
+    """AzuraCast leaves a stopped station out of /nowplaying entirely."""
+    client.get_nowplaying.return_value = nowplaying_list()[:1]
+    coordinators = _coordinators(hass, entry)
+    hub = NowPlayingHub(hass, entry, client, coordinators, stream_factory=FakeStream())
+    await hub.async_start()
+    assert coordinators["ambientes"].off_air is False
+    assert coordinators["party_time"].off_air is True
+    assert coordinators["party_time"].data is None
+    assert coordinators["party_time"].last_update_success is True
+
+    coordinators["party_time"].push(make_nowplaying(1))
+    assert coordinators["party_time"].off_air is False
+    await hub.async_stop()
+
+
 async def test_sse_updates_and_suppresses_polling(
     hass: HomeAssistant, entry: MockConfigEntry, client: MagicMock
 ) -> None:

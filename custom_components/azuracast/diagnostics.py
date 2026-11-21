@@ -27,6 +27,7 @@ def _station(runtime: StationRuntime) -> dict[str, Any]:
         "reject_unavailable_values": runtime.reject_unavailable_values,
         "nowplaying_ok": runtime.nowplaying.last_update_success,
         "online": np.is_online if np else None,
+        "off_air": runtime.nowplaying.off_air,
     }
     if runtime.manage is not None and runtime.manage.data is not None:
         data = runtime.manage.data

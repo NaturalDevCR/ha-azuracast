@@ -95,6 +95,10 @@ class NowPlayingHub:
         self._mark_available()
         for nowplaying in items:
             self._dispatch(nowplaying)
+        listed = {nowplaying.station.shortcode for nowplaying in items}
+        for shortcode, coordinator in self._coordinators.items():
+            if shortcode not in listed:
+                coordinator.mark_off_air()
 
     def _poll_superseded(self) -> bool:
         """True when a poll result is stale: the hub stopped or SSE took over."""

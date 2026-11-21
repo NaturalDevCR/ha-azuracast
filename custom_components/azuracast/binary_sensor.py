@@ -26,6 +26,7 @@ class AzuraCastBinarySensorDescription(BinarySensorEntityDescription):
     """Describes an AzuraCast binary sensor."""
 
     value_fn: Callable[[NowPlaying], bool]
+    off_when_off_air: bool = False
 
 
 BINARY_SENSORS: tuple[AzuraCastBinarySensorDescription, ...] = (
@@ -34,6 +35,7 @@ BINARY_SENSORS: tuple[AzuraCastBinarySensorDescription, ...] = (
         translation_key="online",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
         value_fn=lambda np: np.is_online,
+        off_when_off_air=True,
     ),
     AzuraCastBinarySensorDescription(
         key="live",
@@ -69,8 +71,11 @@ class AzuraCastBinarySensor(AzuraCastNowPlayingEntity, BinarySensorEntity):
     ) -> None:
         super().__init__(coordinator, entry, runtime, description.key)
         self.entity_description = description
+        self._available_off_air = description.off_when_off_air
 
     @property
     def is_on(self) -> bool | None:
         np = self.coordinator.data
-        return self.entity_description.value_fn(np) if np else None
+        if np is None:
+            return False if self.coordinator.off_air else None
+        return self.entity_description.value_fn(np)
